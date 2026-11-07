@@ -19,3 +19,7 @@ pip install -r requirements.txt
 python3 app.py
 
 eof
+
+## Segurança e Conformidade
+- Sanitização de entradas contra injeção SQL via parametrização no SQLite.
+- Validação estrita de tipos para os valores das notas de serviço.
