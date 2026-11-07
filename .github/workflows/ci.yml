@@ -1,0 +1,29 @@
+name: Pipeline CI - RapidoNF
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do Repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar o Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Instalar Dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install Flask requests pytest pytest-cov
+
+      - name: Executar Testes Automatizados e Cobertura
+        run: |
+          python -m pytest --cov=app --cov=database --cov-report=term-missing tests/
