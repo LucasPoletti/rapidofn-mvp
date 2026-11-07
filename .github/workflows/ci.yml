@@ -17,7 +17,7 @@ jobs:
       - name: Configurar o Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.11'
 
       - name: Instalar Dependências
         run: |
@@ -25,5 +25,7 @@ jobs:
           pip install Flask requests pytest pytest-cov
 
       - name: Executar Testes Automatizados e Cobertura
+        env:
+          PYTHONPATH: .
         run: |
-          python -m pytest --cov=app --cov=database --cov-report=term-missing tests/
+          pytest --cov=app --cov=database --cov-report=term-missing tests/
