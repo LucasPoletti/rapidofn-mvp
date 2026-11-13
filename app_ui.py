@@ -1,8 +1,11 @@
+import csv
+import io
 import os
 import re
 import sqlite3
 from datetime import datetime
-from flask import Flask, render_template_string, request, redirect, url_for, jsonify
+from urllib.parse import quote
+from flask import Flask, render_template_string, request, redirect, url_for, jsonify, Response
 
 app = Flask(__name__)
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rapidofn.db")
@@ -82,7 +85,6 @@ def init_db():
             )
         """)
 
-        # Migração segura caso a tabela já exista de uma execução anterior
         cols_existentes = [r["name"] for r in conn.execute("PRAGMA table_info(configuracoes_fiscais)").fetchall()]
         novas_colunas = {
             "ambiente_nacional": "'1 - Produção (ADN Receita Federal)'",
@@ -207,6 +209,20 @@ def init_db():
                 iniciais,
             )
         conn.commit()
+
+
+def montar_link_whatsapp(nota: dict, base_url: str) -> str:
+    link_pdf = f"{base_url.rstrip('/')}/nota/{nota['numero']}/pdf"
+    mensagem = (
+        f"Olá, {nota['paciente']}! Segue o comprovante da sua Nota Fiscal de Serviço Eletrônica (NFS-e) emitida pela *Casa Psico*:\n\n"
+        f"• *NFS-e:* #{nota['numero']}\n"
+        f"• *Data:* {nota['data_emissao']}\n"
+        f"• *Serviço:* {nota['servico']}\n"
+        f"• *Valor:* R$ {nota['valor_fmt']}\n"
+        f"• *DANFSe (PDF Oficial):* {link_pdf}\n\n"
+        f"_Emissão simplificada via RápidoNF | Luyon Automações®_"
+    )
+    return f"https://api.whatsapp.com/send?text={quote(mensagem)}"
 
 
 init_db()
@@ -543,6 +559,7 @@ HTML_TEMPLATE = """
             --muted-text: #475569;
             --primary: #0f766e;
             --primary-hover: #115e59;
+            --whatsapp: #16a34a;
             --border: #cbd5e1;
             --font-scale: 1rem;
         }
@@ -553,6 +570,7 @@ HTML_TEMPLATE = """
             --muted-text: #ffff00;
             --primary: #ffff00;
             --primary-hover: #e5e500;
+            --whatsapp: #ffff00;
             --border: #ffff00;
         }
         body.large-font {
@@ -567,7 +585,7 @@ HTML_TEMPLATE = """
             padding: 20px;
             transition: all 0.2s ease;
         }
-        .container { max-width: 1180px; margin: 0 auto; }
+        .container { max-width: 1200px; margin: 0 auto; }
         header {
             display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;
             background: var(--card-bg); padding: 16px 24px; border-radius: 10px;
@@ -605,8 +623,8 @@ HTML_TEMPLATE = """
         }
         .kpi-label { font-size: 0.82em; color: var(--muted-text); font-weight: 600; }
         .kpi-value { font-size: 1.35em; font-weight: 800; margin-top: 4px; }
-        .grid { display: grid; grid-template-columns: 1fr 1.65fr; gap: 20px; }
-        @media (max-width: 860px) {
+        .grid { display: grid; grid-template-columns: 1fr 1.75fr; gap: 20px; }
+        @media (max-width: 880px) {
             .grid, .kpi-row { grid-template-columns: 1fr; }
         }
         .card {
@@ -645,7 +663,25 @@ HTML_TEMPLATE = """
         body.high-contrast .alert-success, body.high-contrast .alert-error {
             background: #000000; color: #ffff00; border-color: #ffff00;
         }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        .history-header {
+            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
+            margin-bottom: 8px;
+        }
+        .export-form {
+            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+        }
+        .export-form select {
+            width: auto; padding: 6px 10px; font-size: 0.85em;
+        }
+        .btn-export {
+            background: #1e293b; color: #ffffff; border: 1px solid #1e293b;
+            padding: 7px 12px; border-radius: 6px; cursor: pointer; font-size: 0.82em; font-weight: 700;
+            text-decoration: none; display: inline-block;
+        }
+        body.high-contrast .btn-export {
+            background: #ffff00; color: #000000; border-color: #ffff00;
+        }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
         th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
         .status-ok {
             background: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 4px;
@@ -653,7 +689,7 @@ HTML_TEMPLATE = """
         }
         body.high-contrast .status-ok { background: #ffff00; color: #000000; }
         .actions-cell { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
-        .btn-recibo, .btn-pdf {
+        .btn-recibo, .btn-pdf, .btn-whats {
             background: transparent; color: var(--text-color); border: 1px solid var(--border);
             padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.78em; font-weight: 700;
             text-decoration: none; text-align: center; display: inline-block;
@@ -661,7 +697,12 @@ HTML_TEMPLATE = """
         .btn-pdf {
             background: var(--primary); color: #ffffff; border-color: var(--primary);
         }
-        body.high-contrast .btn-pdf { background: #ffff00; color: #000000; border-color: #ffff00; }
+        .btn-whats {
+            background: var(--whatsapp); color: #ffffff; border-color: var(--whatsapp);
+        }
+        body.high-contrast .btn-pdf, body.high-contrast .btn-whats {
+            background: #ffff00; color: #000000; border-color: #ffff00;
+        }
         dialog {
             background: var(--card-bg); color: var(--text-color); border: 2px solid var(--border);
             border-radius: 10px; padding: 22px; max-width: 840px; width: 94%; max-height: 90vh; overflow-y: auto;
@@ -710,9 +751,16 @@ HTML_TEMPLATE = """
     {% if emitida %}
     <div class="alert-success" role="status">
         <span>NFS-e #{{ emitida }} autorizada e gravada no banco de dados SQLite com sucesso!</span>
-        <a href="/nota/{{ emitida }}/pdf" target="_blank" class="btn-pdf" style="padding: 8px 14px; font-size: 0.9em;">
-            Baixar PDF DANFSe #{{ emitida }}
-        </a>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <a href="/nota/{{ emitida }}/pdf" target="_blank" class="btn-pdf" style="padding: 8px 14px; font-size: 0.88em;">
+                Baixar PDF DANFSe #{{ emitida }}
+            </a>
+            {% if nota_emitida_obj %}
+            <a href="{{ nota_emitida_obj.whatsapp_url }}" target="_blank" rel="noopener" class="btn-whats" style="padding: 8px 14px; font-size: 0.88em;">
+                Enviar no WhatsApp
+            </a>
+            {% endif %}
+        </div>
     </div>
     {% endif %}
 
@@ -775,14 +823,25 @@ HTML_TEMPLATE = """
         </section>
 
         <section class="card" aria-labelledby="titulo-historico">
-            <h2 id="titulo-historico" style="margin-top:0;">Notas Fiscais Emitidas (Persistência Real)</h2>
+            <div class="history-header">
+                <h2 id="titulo-historico" style="margin:0;">Notas Fiscais Emitidas</h2>
+                <form method="GET" action="/exportar-mensal" class="export-form">
+                    <select name="competencia" aria-label="Competência para Exportação Contábil">
+                        <option value="TODAS">Todas as Competências</option>
+                        {% for comp in competencias %}
+                        <option value="{{ comp }}">{{ comp }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn-export">Exportar Mensal (Excel/CSV)</button>
+                </form>
+            </div>
             <table>
                 <thead>
                     <tr>
                         <th>NFS-e</th>
                         <th>Tomador / Serviço</th>
                         <th>Valor / DAS</th>
-                        <th>Ações / PDF</th>
+                        <th>Ações / Envio</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -804,8 +863,9 @@ HTML_TEMPLATE = """
                             <span class="status-ok">{{ n.status }}</span>
                             <div class="actions-cell">
                                 <a href="/nota/{{ n.numero }}/pdf" target="_blank" class="btn-pdf">Gerar PDF</a>
+                                <a href="{{ n.whatsapp_url }}" target="_blank" rel="noopener" class="btn-whats">Enviar WhatsApp</a>
                                 <button type="button" class="btn-recibo"
-                                    onclick="abrirRecibo('{{ n.numero }}', '{{ n.paciente }}', '{{ n.cpf }}', '{{ n.servico }}', '{{ n.valor_fmt }}', '{{ n.valor_das_fmt }}', '{{ n.aliquota_fmt }}', '{{ n.data_emissao }}')">
+                                    onclick="abrirRecibo('{{ n.numero }}', '{{ n.paciente }}', '{{ n.cpf }}', '{{ n.servico }}', '{{ n.valor_fmt }}', '{{ n.valor_das_fmt }}', '{{ n.aliquota_fmt }}', '{{ n.data_emissao }}', '{{ n.whatsapp_url }}')">
                                     Ver Espelho
                                 </button>
                             </div>
@@ -1061,7 +1121,10 @@ HTML_TEMPLATE = """
     <p><strong>Regime Tributário:</strong> {{ cfg.regime_tributario }}</p>
     <hr>
     <p id="recibo-detalhes" style="line-height:1.6;"></p>
-    <a id="modal-btn-pdf" href="#" target="_blank" class="btn-submit">Gerar PDF Oficial (DANFSe Nacional)</a>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:14px;">
+        <a id="modal-btn-pdf" href="#" target="_blank" class="btn-submit" style="margin-top:0;">Gerar PDF (DANFSe)</a>
+        <a id="modal-btn-whats" href="#" target="_blank" rel="noopener" class="btn-submit" style="margin-top:0; background:var(--whatsapp);">Enviar via WhatsApp</a>
+    </div>
     <button type="button" class="btn-recibo" style="width:100%; margin-top:8px; padding:10px;" onclick="document.getElementById('modal-recibo').close()">Fechar Espelho</button>
 </dialog>
 
@@ -1222,7 +1285,7 @@ HTML_TEMPLATE = """
         document.getElementById("btn-font").setAttribute("aria-pressed", active);
     }
 
-    function abrirRecibo(num, pac, cpf, serv, val, das, aliq, data) {
+    function abrirRecibo(num, pac, cpf, serv, val, das, aliq, data, whatsUrl) {
         document.getElementById("recibo-detalhes").innerHTML =
             `<strong>Número NFS-e:</strong> #${num}<br>` +
             `<strong>Data/Hora Autorização:</strong> ${data}<br>` +
@@ -1232,6 +1295,7 @@ HTML_TEMPLATE = """
             `<strong>Valor do DAS Previsto (${aliq}%):</strong> R$ ${das}<br>` +
             `<strong>Situação:</strong> AUTORIZADA`;
         document.getElementById("modal-btn-pdf").href = `/nota/${num}/pdf`;
+        document.getElementById("modal-btn-whats").href = whatsUrl;
         document.getElementById("modal-recibo").showModal();
     }
 </script>
@@ -1243,6 +1307,7 @@ HTML_TEMPLATE = """
 @app.route("/", methods=["GET"])
 def index():
     cfg = get_config_fiscal()
+    base_url = request.host_url
     with get_db() as conn:
         rows = conn.execute("SELECT * FROM notas_fiscais ORDER BY id DESC").fetchall()
         pac_rows = conn.execute("""
@@ -1252,13 +1317,25 @@ def index():
             ORDER BY MAX(id) DESC
         """).fetchall()
 
+    emitida = request.args.get("emitida")
+    nota_emitida_obj = None
     notas = []
+    competencias_set = set()
+
     for r in rows:
         item = dict(r)
         item["valor_fmt"] = fmt_brl(item["valor"])
         item["valor_das_fmt"] = fmt_brl(item["valor_das"])
         item["aliquota_fmt"] = fmt_brl(item["aliquota_das"])
+        item["whatsapp_url"] = montar_link_whatsapp(item, base_url)
         notas.append(item)
+
+        if emitida and item["numero"] == emitida:
+            nota_emitida_obj = item
+
+        # Extrai competência MM/AAAA a partir de DD/MM/AAAA HH:MM
+        if len(item["data_emissao"]) >= 10:
+            competencias_set.add(item["data_emissao"][3:10])
 
     pacientes = []
     for p in pac_rows:
@@ -1266,6 +1343,7 @@ def index():
         item_p["total_fmt"] = fmt_brl(item_p["total_valor"])
         pacientes.append(item_p)
 
+    competencias = sorted(list(competencias_set), reverse=True)
     total_faturado = sum(n["valor"] for n in notas)
     total_das = sum(n["valor_das"] for n in notas)
     das_padrao = round(180.00 * (cfg["aliquota_das"] / 100.0), 2)
@@ -1277,11 +1355,99 @@ def index():
         das_padrao_fmt=fmt_brl(das_padrao),
         notas=notas,
         pacientes=pacientes,
+        competencias=competencias,
         total_faturado_fmt=fmt_brl(total_faturado),
         total_das_fmt=fmt_brl(total_das),
-        emitida=request.args.get("emitida"),
+        emitida=emitida,
+        nota_emitida_obj=nota_emitida_obj,
         config_salva=request.args.get("config_salva"),
         erro=request.args.get("erro"),
+    )
+
+
+@app.route("/exportar-mensal", methods=["GET"])
+def exportar_mensal():
+    cfg = get_config_fiscal()
+    competencia = request.args.get("competencia", "TODAS").strip()
+
+    with get_db() as conn:
+        rows = conn.execute("SELECT * FROM notas_fiscais ORDER BY id ASC").fetchall()
+
+    filtradas = []
+    for r in rows:
+        item = dict(r)
+        comp_nota = item["data_emissao"][3:10] if len(item["data_emissao"]) >= 10 else ""
+        if competencia == "TODAS" or comp_nota == competencia:
+            filtradas.append(item)
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=";")
+
+    writer.writerow(["RELATORIO CONTABIL MENSAL DE NFS-e - RAPIDONF / LUYON AUTOMACOES"])
+    writer.writerow(["Prestador", cfg["razao_social"], "CNPJ", cfg["cnpj"]])
+    writer.writerow(["Regime Tributario", cfg["regime_tributario"], "Competencia", competencia])
+    writer.writerow(["Contador Responsavel", cfg["contador_responsavel"], "CRC", cfg["crc_contador"]])
+    writer.writerow([])
+    writer.writerow([
+        "Numero NFS-e",
+        "Serie DPS",
+        "Data/Hora Emissao",
+        "Competencia",
+        "Nome Paciente (Tomador)",
+        "CPF Tomador",
+        "Codigo Servico LC 116",
+        "Descricao Servico",
+        "Valor Bruto (R$)",
+        "Aliquota DAS (%)",
+        "Valor DAS Previsto (R$)",
+        "Status Fiscal",
+    ])
+
+    total_bruto = 0.0
+    total_das = 0.0
+    for n in filtradas:
+        comp_nota = n["data_emissao"][3:10] if len(n["data_emissao"]) >= 10 else ""
+        total_bruto += n["valor"]
+        total_das += n["valor_das"]
+        writer.writerow([
+            n["numero"],
+            cfg["serie_dps"],
+            n["data_emissao"],
+            comp_nota,
+            n["paciente"],
+            n["cpf"],
+            cfg["codigo_servico"][:8],
+            n["servico"],
+            fmt_brl(n["valor"]),
+            fmt_brl(n["aliquota_das"]),
+            fmt_brl(n["valor_das"]),
+            n["status"],
+        ])
+
+    writer.writerow([])
+    writer.writerow([
+        "TOTAL CONSOLIDADO",
+        "",
+        f"{len(filtradas)} nota(s)",
+        competencia,
+        "",
+        "",
+        "",
+        "",
+        fmt_brl(total_bruto),
+        "",
+        fmt_brl(total_das),
+        "",
+    ])
+
+    csv_content = "\ufeff" + output.getvalue()
+    nome_comp = competencia.replace("/", "-")
+    return Response(
+        csv_content.encode("utf-8"),
+        mimetype="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename=Relatorio_Contabil_NFSe_{nome_comp}_CasaPsico.csv"
+        },
     )
 
 
