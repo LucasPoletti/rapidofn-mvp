@@ -2,7 +2,7 @@ import os
 import re
 import sqlite3
 from datetime import datetime
-from flask import Flask, render_template_string, request, redirect, url_for, jsonify, Response
+from flask import Flask, render_template_string, request, redirect, url_for, jsonify
 
 app = Flask(__name__)
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rapidofn.db")
@@ -118,83 +118,314 @@ def init_db():
         conn.commit()
 
 
-def gerar_pdf_nfse_bytes(nota: dict) -> bytes:
-    """Gera um documento PDF (DANFSe) válido e estruturado em A4 sem dependências externas."""
-    def esc(txt: str) -> str:
-        return (
-            str(txt)
-            .replace("\\", "\\\\")
-            .replace("(", "\\(")
-            .replace(")", "\\)")
-        )
-
-    linhas_conteudo = [
-        "q",
-        "0.06 0.46 0.43 RG 1.5 w 36 36 523 770 re S",
-        "0.06 0.46 0.43 rg 36 742 523 64 re f",
-        "1 1 1 rg BT /F2 15 Tf 50 780 Td (DANFSe - DOCUMENTO AUXILIAR DA NFS-e) Tj ET",
-        "1 1 1 rg BT /F1 9.5 Tf 50 762 Td (Sistema RapidoNF | Tecnologia Luyon Automacoes - Emissao Simplificada) Tj ET",
-        f"1 1 1 rg BT /F2 12 Tf 430 780 Td (NFS-e #{esc(nota['numero'])}) Tj ET",
-        f"1 1 1 rg BT /F1 9 Tf 430 762 Td ({esc(nota['data_emissao'])}) Tj ET",
-        "0.12 0.16 0.23 rg BT /F2 10 Tf 50 715 Td (1. IDENTIFICACAO DO PRESTADOR DE SERVICOS) Tj ET",
-        "0.8 0.84 0.88 RG 0.8 w 50 708 m 545 708 l S",
-        "BT /F2 9.5 Tf 50 692 Td (Razao Social:) Tj /F1 9.5 Tf 135 692 Td (CASA PSICO PSICOLOGIA CLINICA LTDA) Tj ET",
-        "BT /F2 9.5 Tf 50 676 Td (CNPJ:) Tj /F1 9.5 Tf 135 676 Td (63.897.592/0001-06) Tj ET",
-        "BT /F2 9.5 Tf 50 660 Td (Enquadramento:) Tj /F1 9.5 Tf 135 660 Td (Simples Nacional - Anexo III (Aliquota 6,00% inicial)) Tj ET",
-        "BT /F2 9.5 Tf 50 644 Td (Codigo Servico:) Tj /F1 9.5 Tf 135 644 Td (LC 116/2003 - Item 04.16 - Psicologia e Psicanalise) Tj ET",
-        "BT /F2 10 Tf 50 612 Td (2. IDENTIFICACAO DO TOMADOR (PACIENTE)) Tj ET",
-        "50 605 m 545 605 l S",
-        f"BT /F2 9.5 Tf 50 589 Td (Nome Completo:) Tj /F1 9.5 Tf 145 589 Td ({esc(nota['paciente'])}) Tj ET",
-        f"BT /F2 9.5 Tf 50 573 Td (CPF Validado:) Tj /F1 9.5 Tf 145 573 Td ({esc(nota['cpf'])}) Tj ET",
-        "BT /F2 10 Tf 50 541 Td (3. DISCRIMINACAO DOS SERVICOS PRESTADOS) Tj ET",
-        "50 534 m 545 534 l S",
-        "0.96 0.97 0.98 rg 50 475 495 50 re f",
-        "0.8 0.84 0.88 RG 50 475 495 50 re S",
-        f"0.12 0.16 0.23 rg BT /F1 10 Tf 60 505 Td ({esc(nota['servico'])}) Tj ET",
-        "BT /F1 8.5 Tf 60 488 Td (Atendimento clinico realizado conforme prontuario reservado sob sigilo profissional.) Tj ET",
-        "BT /F2 10 Tf 50 445 Td (4. VALORES E APURACAO TRIBUTARIA (SIMPLES NACIONAL)) Tj ET",
-        "50 438 m 545 438 l S",
-        f"BT /F2 10 Tf 50 418 Td (Valor Bruto dos Servicos:) Tj /F2 11 Tf 220 418 Td (R$ {esc(fmt_brl(nota['valor']))}) Tj ET",
-        f"BT /F2 10 Tf 50 398 Td (Aliquota Anexo III (Inicial):) Tj /F1 10 Tf 220 398 Td (6,00%) Tj ET",
-        f"BT /F2 10 Tf 50 378 Td (Valor do DAS Previsto (6,00%):) Tj /F2 11 Tf 220 378 Td (R$ {esc(fmt_brl(nota['valor_das']))}) Tj ET",
-        f"BT /F2 10 Tf 50 358 Td (Situacao Fiscal:) Tj /F2 10 Tf 220 358 Td ({esc(nota['status'])}) Tj ET",
-        "50 110 m 545 110 l S",
-        "BT /F2 8.5 Tf 50 94 Td (AUTENTICIDADE E RASTREABILIDADE DIGITAL - RAPIDONF MVP) Tj ET",
-        f"BT /F1 8 Tf 50 80 Td (Codigo de Verificacao: RNF-{esc(nota['numero'])}-CASAPSICO-SNIII) Tj ET",
-        "BT /F1 8 Tf 50 66 Td (Documento emitido eletronicamente via plataforma RapidoNF (https://rapidonf-mvp.onrender.com).) Tj ET",
-        "Q",
-    ]
-
-    stream_bytes = "\n".join(linhas_conteudo).encode("latin-1", errors="replace")
-
-    objs = [
-        b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
-        b"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n",
-        b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >> endobj\n",
-        b"4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >> endobj\n",
-        b"5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >> endobj\n",
-        f"6 0 obj << /Length {len(stream_bytes)} >> stream\n".encode("ascii") + stream_bytes + b"\nendstream endobj\n",
-    ]
-
-    pdf = bytearray(b"%PDF-1.4\n")
-    offsets = [0]
-    for obj in objs:
-        offsets.append(len(pdf))
-        pdf.extend(obj)
-
-    xref_pos = len(pdf)
-    pdf.extend(f"xref\n0 {len(objs) + 1}\n".encode("ascii"))
-    pdf.extend(b"0000000000 65535 f \n")
-    for off in offsets[1:]:
-        pdf.extend(f"{off:010d} 00000 n \n".encode("ascii"))
-
-    pdf.extend(
-        f"trailer << /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF\n".encode("ascii")
-    )
-    return bytes(pdf)
-
-
 init_db()
+
+DANFSE_NACIONAL_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>DANFSe Nacional - NFS-e #{{ nota.numero }} - Casa Psico</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            background: #e2e8f0;
+            color: #0f172a;
+            margin: 0;
+            padding: 20px;
+            font-size: 11px;
+        }
+        .toolbar {
+            max-width: 820px;
+            margin: 0 auto 14px auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #0f766e;
+            color: #ffffff;
+            padding: 10px 16px;
+            border-radius: 6px;
+        }
+        .toolbar button, .toolbar a {
+            background: #ffffff;
+            color: #0f766e;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 12px;
+        }
+        .sheet {
+            max-width: 820px;
+            margin: 0 auto;
+            background: #ffffff;
+            border: 1.5px solid #000000;
+            padding: 12px;
+        }
+        .header-grid {
+            display: grid;
+            grid-template-columns: 110px 1fr 195px;
+            border: 1px solid #000000;
+        }
+        .header-logo {
+            border-right: 1px solid #000000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 8px;
+            text-align: center;
+            background: #f8fafc;
+        }
+        .badge-nfse {
+            font-size: 18px;
+            font-weight: 900;
+            color: #065f46;
+            letter-spacing: -0.5px;
+        }
+        .header-title {
+            border-right: 1px solid #000000;
+            padding: 8px 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            text-align: center;
+        }
+        .header-title h1 {
+            margin: 0;
+            font-size: 14px;
+            text-transform: uppercase;
+        }
+        .header-title p {
+            margin: 4px 0 0 0;
+            font-size: 10px;
+            color: #334155;
+        }
+        .header-num {
+            padding: 6px 8px;
+            font-size: 10px;
+        }
+        .header-num div { margin-bottom: 4px; }
+        .section-bar {
+            background: #e2e8f0;
+            border: 1px solid #000000;
+            border-top: none;
+            font-weight: bold;
+            padding: 4px 8px;
+            font-size: 10px;
+            text-transform: uppercase;
+        }
+        .box {
+            border: 1px solid #000000;
+            border-top: none;
+            padding: 6px 8px;
+        }
+        .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .row-3 { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; }
+        .row-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+        .lbl { font-size: 9px; color: #475569; text-transform: uppercase; display: block; }
+        .val { font-size: 11px; font-weight: bold; color: #000000; margin-top: 2px; display: block; }
+        .chave {
+            font-family: "Courier New", monospace;
+            font-size: 11px;
+            font-weight: bold;
+            letter-spacing: 0.6px;
+        }
+        .desc-box {
+            min-height: 74px;
+            line-height: 1.5;
+        }
+        .footer-grid {
+            display: grid;
+            grid-template-columns: 1fr 105px;
+            border: 1px solid #000000;
+            border-top: none;
+        }
+        .footer-info {
+            padding: 8px;
+            border-right: 1px solid #000000;
+            font-size: 9.5px;
+            line-height: 1.45;
+        }
+        .qr-box {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 6px;
+            text-align: center;
+            font-size: 8px;
+        }
+        @media print {
+            body { background: #ffffff; padding: 0; }
+            .toolbar { display: none !important; }
+            .sheet { border: 1.5px solid #000000; max-width: 100%; }
+        }
+    </style>
+</head>
+<body onload="setTimeout(function(){ window.print(); }, 350)">
+    <div class="toolbar">
+        <span><strong>DANFSe Padrão Nacional</strong> — Pré-visualização Oficial (NFS-e #{{ nota.numero }})</span>
+        <div style="display:flex; gap:8px;">
+            <button type="button" onclick="window.print()">Salvar como PDF / Imprimir</button>
+            <a href="/">Voltar ao RápidoNF</a>
+        </div>
+    </div>
+
+    <div class="sheet">
+        <div class="header-grid">
+            <div class="header-logo">
+                <span class="badge-nfse">NFS-e</span>
+                <span style="font-size:8.5px; font-weight:bold; margin-top:2px;">PADRÃO NACIONAL</span>
+                <span style="font-size:8px; color:#475569;">Ambiente Nacional</span>
+            </div>
+            <div class="header-title">
+                <h1>DANFSe — Documento Auxiliar da NFS-e</h1>
+                <p>Nota Fiscal de Serviço Eletrônica — Sistema Nacional NFS-e (LC 116/2003)</p>
+                <p style="font-weight:bold; color:#065f46;">Emissor Integrado: RápidoNF | Tecnologia Luyon Automações®</p>
+            </div>
+            <div class="header-num">
+                <div><span class="lbl">Número da NFS-e</span><span class="val" style="font-size:13px;">{{ nota.numero }}</span></div>
+                <div><span class="lbl">Competência</span><span class="val">{{ nota.data_emissao[:10] }}</span></div>
+                <div><span class="lbl">Data e Hora da Emissão</span><span class="val">{{ nota.data_emissao }}</span></div>
+            </div>
+        </div>
+
+        <div class="box">
+            <span class="lbl">Chave de Acesso da NFS-e (Padrão Nacional 50 Dígitos)</span>
+            <span class="chave">{{ chave_acesso }}</span>
+        </div>
+
+        <div class="section-bar">Emitente / Prestador do Serviço</div>
+        <div class="box">
+            <div class="row-3">
+                <div>
+                    <span class="lbl">Nome / Razão Social</span>
+                    <span class="val">CASA PSICO PSICOLOGIA CLÍNICA LTDA</span>
+                </div>
+                <div>
+                    <span class="lbl">CNPJ / CPF</span>
+                    <span class="val">63.897.592/0001-06</span>
+                </div>
+                <div>
+                    <span class="lbl">Inscrição Municipal</span>
+                    <span class="val">ISENTO / SIMPLES NACIONAL</span>
+                </div>
+            </div>
+            <div class="row-2" style="margin-top:6px;">
+                <div>
+                    <span class="lbl">Município / UF</span>
+                    <span class="val">Porto Alegre - RS</span>
+                </div>
+                <div>
+                    <span class="lbl">Regime Especial de Tributação</span>
+                    <span class="val">Optante pelo Simples Nacional — Anexo III (Alíquota 6,00% inicial)</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-bar">Tomador do Serviço (Paciente)</div>
+        <div class="box">
+            <div class="row-2">
+                <div>
+                    <span class="lbl">Nome / Razão Social</span>
+                    <span class="val">{{ nota.paciente }}</span>
+                </div>
+                <div>
+                    <span class="lbl">CPF / CNPJ (Validado Receita Federal)</span>
+                    <span class="val">{{ nota.cpf }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-bar">Serviço Prestado</div>
+        <div class="box">
+            <div class="row-3" style="margin-bottom:6px;">
+                <div>
+                    <span class="lbl">Código de Tributação Nacional (LC 116/03)</span>
+                    <span class="val">04.16.01 — Psicologia e Psicanálise</span>
+                </div>
+                <div>
+                    <span class="lbl">Local da Prestação</span>
+                    <span class="val">Porto Alegre - RS</span>
+                </div>
+                <div>
+                    <span class="lbl">Situação do Documento</span>
+                    <span class="val" style="color:#065f46;">{{ nota.status }}</span>
+                </div>
+            </div>
+            <div class="desc-box" style="border-top:1px dashed #cbd5e1; padding-top:6px;">
+                <span class="lbl">Descrição do Serviço</span>
+                <span class="val" style="font-weight:normal; margin-top:4px;">
+                    {{ nota.servico }}<br>
+                    Atendimento clínico realizado conforme prontuário reservado sob sigilo profissional (Resolução CFP nº 010/2005).<br>
+                    Documento emitido por empresa optante pelo Simples Nacional — Anexo III (Alíquota inicial de 6,00%).
+                </span>
+            </div>
+        </div>
+
+        <div class="section-bar">Tributação Municipal & Apuração Simples Nacional (DAS)</div>
+        <div class="box">
+            <div class="row-4">
+                <div>
+                    <span class="lbl">Valor do Serviço</span>
+                    <span class="val">R$ {{ nota.valor_fmt }}</span>
+                </div>
+                <div>
+                    <span class="lbl">Base de Cálculo</span>
+                    <span class="val">R$ {{ nota.valor_fmt }}</span>
+                </div>
+                <div>
+                    <span class="lbl">Alíquota Simples (Anexo III)</span>
+                    <span class="val">6,00%</span>
+                </div>
+                <div>
+                    <span class="lbl">Valor do DAS Previsto</span>
+                    <span class="val">R$ {{ nota.valor_das_fmt }}</span>
+                </div>
+            </div>
+            <div class="row-4" style="margin-top:6px; border-top:1px dashed #cbd5e1; padding-top:6px;">
+                <div>
+                    <span class="lbl">Deduções / Descontos</span>
+                    <span class="val">R$ 0,00</span>
+                </div>
+                <div>
+                    <span class="lbl">Retenção ISSQN</span>
+                    <span class="val">Não Retido (Recolhimento via DAS)</span>
+                </div>
+                <div>
+                    <span class="lbl">Tributos Federais Retidos</span>
+                    <span class="val">R$ 0,00</span>
+                </div>
+                <div>
+                    <span class="lbl">Valor Líquido da NFS-e</span>
+                    <span class="val" style="font-size:12px;">R$ {{ nota.valor_fmt }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer-grid">
+            <div class="footer-info">
+                <strong>INFORMAÇÕES COMPLEMENTARES E AUTENTICIDADE</strong><br>
+                1. Documento emitido em conformidade com o layout do Padrão Nacional da NFS-e.<br>
+                2. Não gera direito a crédito de IPI/ICMS. Recolhimento unificado via guia DAS (Simples Nacional — Anexo III).<br>
+                3. Código Verificador: <strong>RNF-{{ nota.numero }}-CASAPSICO-SNIII</strong> | Emitido via <strong>RápidoNF MVP</strong>.
+            </div>
+            <div class="qr-box">
+                <svg width="68" height="68" viewBox="0 0 25 25" shape-rendering="crispEdges">
+                    <rect width="25" height="25" fill="#fff"/>
+                    <path d="M1,1h7v7h-7zM2,2v5h5v-5zM3,3h3v3h-3zM17,1h7v7h-7zM18,2v5h5v-5zM19,3h3v3h-3zM1,17h7v7h-7zM2,18v5h5v-5zM3,19h3v3h-3zM10,2h2v2h-2zM13,3h2v3h-2zM10,6h3v2h-3zM2,10h3v2h-3zM7,10h2v4h-2zM11,10h4v2h-4zM17,10h3v2h-3zM21,11h3v3h-3zM10,14h2v3h-2zM14,14h3v2h-3zM18,16h2v4h-2zM10,19h4v2h-4zM15,21h3v3h-3zM21,20h3v4h-3z" fill="#000"/>
+                </svg>
+                <span style="margin-top:2px;">Consulta Nacional</span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+"""
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -347,7 +578,7 @@ HTML_TEMPLATE = """
     <div class="alert-success" role="status">
         <span>NFS-e #{{ emitida }} autorizada e gravada no banco de dados SQLite com sucesso!</span>
         <a href="/nota/{{ emitida }}/pdf" target="_blank" class="btn-pdf" style="padding: 8px 14px; font-size: 0.9em;">
-            Baixar PDF da NFS-e #{{ emitida }}
+            Baixar PDF DANFSe #{{ emitida }}
         </a>
     </div>
     {% endif %}
@@ -454,7 +685,7 @@ HTML_TEMPLATE = """
     <p><strong>Regime Tributário:</strong> Simples Nacional — Anexo III (Alíquota 6,00% inicial)</p>
     <hr>
     <p id="recibo-detalhes" style="line-height:1.6;"></p>
-    <a id="modal-btn-pdf" href="#" target="_blank" class="btn-submit">Baixar PDF Oficial (DANFSe)</a>
+    <a id="modal-btn-pdf" href="#" target="_blank" class="btn-submit">Gerar PDF Oficial (DANFSe Nacional)</a>
     <button type="button" class="btn-recibo" style="width:100%; margin-top:8px; padding:10px;" onclick="document.getElementById('modal-recibo').close()">Fechar Espelho</button>
 </dialog>
 
@@ -698,14 +929,11 @@ def baixar_pdf_nota(numero):
     if not row:
         return redirect(url_for("index", erro=f"Nota fiscal #{numero} não encontrada."))
 
-    pdf_bytes = gerar_pdf_nfse_bytes(dict(row))
-    return Response(
-        pdf_bytes,
-        mimetype="application/pdf",
-        headers={
-            "Content-Disposition": f"inline; filename=DANFSe_{numero}_CasaPsico.pdf"
-        },
-    )
+    nota = dict(row)
+    nota["valor_fmt"] = fmt_brl(nota["valor"])
+    nota["valor_das_fmt"] = fmt_brl(nota["valor_das"])
+    chave_acesso = f"43149022263897592000106000000000{nota['numero']}2611139874"
+    return render_template_string(DANFSE_NACIONAL_TEMPLATE, nota=nota, chave_acesso=chave_acesso)
 
 
 @app.route("/health", methods=["GET"])
