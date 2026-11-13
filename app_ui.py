@@ -1,10 +1,41 @@
 import os
+import re
 import sqlite3
 from datetime import datetime
 from flask import Flask, render_template_string, request, redirect, url_for, jsonify
 
 app = Flask(__name__)
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rapidofn.db")
+
+
+def cpf_valido(cpf: str) -> bool:
+    numeros = re.sub(r"\D", "", cpf or "")
+    if len(numeros) != 11 or numeros == numeros[0] * 11:
+        return False
+
+    soma1 = sum(int(numeros[i]) * (10 - i) for i in range(9))
+    dig1 = (soma1 * 10 % 11) % 10
+
+    soma2 = sum(int(numeros[i]) * (11 - i) for i in range(10))
+    dig2 = (soma2 * 10 % 11) % 10
+
+    return numeros[-2:] == f"{dig1}{dig2}"
+
+
+def parse_valor_brl(valor_str: str) -> float:
+    limpo = re.sub(r"[^\d,.]", "", (valor_str or "").strip())
+    if not limpo:
+        return 0.0
+    if "," in limpo:
+        limpo = limpo.replace(".", "").replace(",", ".")
+    try:
+        return round(float(limpo), 2)
+    except ValueError:
+        return 0.0
+
+
+def fmt_brl(valor: float) -> str:
+    return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def get_db():
@@ -150,6 +181,10 @@ HTML_TEMPLATE = """
             width: 100%; padding: 10px; border-radius: 6px; border: 2px solid var(--border);
             background: var(--bg-color); color: var(--text-color); font-size: 1em; box-sizing: border-box;
         }
+        .field-error {
+            color: #dc2626; font-size: 0.82em; font-weight: 700; margin-top: 4px; display: none;
+        }
+        body.high-contrast .field-error { color: #ffff00; text-decoration: underline; }
         .tax-box {
             margin-top: 14px; padding: 10px 12px; border-radius: 6px;
             border: 1px dashed var(--border); font-size: 0.85em;
@@ -164,7 +199,11 @@ HTML_TEMPLATE = """
             background: #dcfce7; color: #166534; border: 2px solid #16a34a;
             padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-weight: 700;
         }
-        body.high-contrast .alert-success {
+        .alert-error {
+            background: #fee2e2; color: #991b1b; border: 2px solid #dc2626;
+            padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-weight: 700;
+        }
+        body.high-contrast .alert-success, body.high-contrast .alert-error {
             background: #000000; color: #ffff00; border-color: #ffff00;
         }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
@@ -208,6 +247,12 @@ HTML_TEMPLATE = """
     </div>
     {% endif %}
 
+    {% if erro %}
+    <div class="alert-error" role="alert">
+        {{ erro }}
+    </div>
+    {% endif %}
+
     <div class="kpi-row">
         <div class="kpi-card">
             <div class="kpi-label">Notas Emitidas (Banco SQLite)</div>
@@ -215,23 +260,24 @@ HTML_TEMPLATE = """
         </div>
         <div class="kpi-card">
             <div class="kpi-label">Faturamento Clínico Registrado</div>
-            <div class="kpi-value">R$ {{ "%.2f"|format(total_faturado) }}</div>
+            <div class="kpi-value">R$ {{ total_faturado_fmt }}</div>
         </div>
         <div class="kpi-card">
             <div class="kpi-label">ISS Retido / Apurado (2%)</div>
-            <div class="kpi-value">R$ {{ "%.2f"|format(total_iss) }}</div>
+            <div class="kpi-value">R$ {{ total_iss_fmt }}</div>
         </div>
     </div>
 
     <div class="grid">
         <section class="card" aria-labelledby="titulo-emissao">
             <h2 id="titulo-emissao" style="margin-top:0;">Emitir Nova NFS-e</h2>
-            <form method="POST" action="/emitir">
+            <form method="POST" action="/emitir" onsubmit="return validarFormulario()">
                 <label for="paciente">Nome do Paciente (Tomador)</label>
                 <input id="paciente" name="paciente" type="text" placeholder="Ex: Fernanda Oliveira" required>
 
                 <label for="cpf">CPF do Paciente</label>
                 <input id="cpf" name="cpf" type="text" maxlength="14" placeholder="000.000.000-00" oninput="mascaraCPF(this)" required>
+                <div id="cpf-erro" class="field-error">CPF inválido. Informe um CPF válido com dígitos verificadores reais.</div>
 
                 <label for="servico">Descrição do Serviço Clínico (LC 116/03 - 04.16)</label>
                 <select id="servico" name="servico">
@@ -241,14 +287,17 @@ HTML_TEMPLATE = """
                 </select>
 
                 <label for="valor">Valor da Sessão (R$)</label>
-                <input id="valor" name="valor" type="number" step="0.01" min="1" value="180.00" oninput="atualizarImposto()" required>
+                <input id="valor" name="valor" type="text" inputmode="decimal" value="180,00"
+                       oninput="filtrarValor(this)" onblur="formatarValorFinal(this)"
+                       onkeydown="tratarEnterValor(event, this)" required>
+                <div id="valor-erro" class="field-error">Informe um valor válido maior que R$ 0,00.</div>
 
                 <div class="tax-box" id="tax-preview">
                     <strong>Enquadramento Automático:</strong> Simples Nacional (Anexo III)<br>
-                    <strong>ISS Estimado (2,00%):</strong> R$ <span id="iss-calc">3.60</span>
+                    <strong>ISS Estimado (2,00%):</strong> R$ <span id="iss-calc">3,60</span>
                 </div>
 
-                <button type="submit" class="btn-submit">Transmitir NFS-e Agora</button>
+                <button type="submit" id="btn-transmitir" class="btn-submit">Transmitir NFS-e Agora</button>
             </form>
         </section>
 
@@ -275,13 +324,13 @@ HTML_TEMPLATE = """
                             <small>{{ n.servico }}</small>
                         </td>
                         <td>
-                            R$ {{ "%.2f"|format(n.valor) }}<br>
-                            <small>ISS: R$ {{ "%.2f"|format(n.valor_iss) }}</small>
+                            R$ {{ n.valor_fmt }}<br>
+                            <small>ISS: R$ {{ n.valor_iss_fmt }}</small>
                         </td>
                         <td>
                             <span class="status-ok">{{ n.status }}</span><br>
                             <button type="button" class="btn-recibo"
-                                onclick="abrirRecibo('{{ n.numero }}', '{{ n.paciente }}', '{{ n.cpf }}', '{{ n.servico }}', '{{ '%.2f'|format(n.valor) }}', '{{ '%.2f'|format(n.valor_iss) }}', '{{ n.data_emissao }}')">
+                                onclick="abrirRecibo('{{ n.numero }}', '{{ n.paciente }}', '{{ n.cpf }}', '{{ n.servico }}', '{{ n.valor_fmt }}', '{{ n.valor_iss_fmt }}', '{{ n.data_emissao }}')">
                                 Ver Espelho
                             </button>
                         </td>
@@ -303,17 +352,97 @@ HTML_TEMPLATE = """
 </dialog>
 
 <script>
+    function validarCPFJS(cpf) {
+        const nums = cpf.replace(/\\D/g, "");
+        if (nums.length !== 11 || /^(\\d)\\1{10}$/.test(nums)) return false;
+
+        let soma = 0;
+        for (let i = 0; i < 9; i++) soma += parseInt(nums[i]) * (10 - i);
+        let dig1 = (soma * 10) % 11;
+        if (dig1 === 10) dig1 = 0;
+        if (dig1 !== parseInt(nums[9])) return false;
+
+        soma = 0;
+        for (let i = 0; i < 10; i++) soma += parseInt(nums[i]) * (11 - i);
+        let dig2 = (soma * 10) % 11;
+        if (dig2 === 10) dig2 = 0;
+        return dig2 === parseInt(nums[10]);
+    }
+
     function mascaraCPF(campo) {
         let v = campo.value.replace(/\\D/g, "").slice(0, 11);
         v = v.replace(/(\\d{3})(\\d)/, "$1.$2");
         v = v.replace(/(\\d{3})(\\d)/, "$1.$2");
         v = v.replace(/(\\d{3})(\\d{1,2})$/, "$1-$2");
         campo.value = v;
+
+        const erroEl = document.getElementById("cpf-erro");
+        if (v.length === 14 && !validarCPFJS(v)) {
+            erroEl.style.display = "block";
+            campo.setCustomValidity("CPF inválido.");
+        } else {
+            erroEl.style.display = "none";
+            campo.setCustomValidity("");
+        }
     }
 
-    function atualizarImposto() {
-        const val = parseFloat(document.getElementById("valor").value) || 0;
-        document.getElementById("iss-calc").textContent = (val * 0.02).toFixed(2);
+    function parseValorJS(texto) {
+        let limpo = (texto || "").replace(/[^\\d,.]/g, "");
+        if (!limpo) return 0;
+        if (limpo.includes(",")) {
+            limpo = limpo.replace(/\\./g, "").replace(",", ".");
+        }
+        const num = parseFloat(limpo);
+        return isNaN(num) ? 0 : num;
+    }
+
+    function formatarBRLJS(num) {
+        return num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function filtrarValor(campo) {
+        campo.value = campo.value.replace(/[^\\d,.]/g, "");
+        const val = parseValorJS(campo.value);
+        document.getElementById("iss-calc").textContent = formatarBRLJS(val * 0.02);
+        document.getElementById("valor-erro").style.display = "none";
+    }
+
+    function formatarValorFinal(campo) {
+        const val = parseValorJS(campo.value);
+        const erroEl = document.getElementById("valor-erro");
+        if (val <= 0 || val > 999999.99) {
+            erroEl.style.display = "block";
+            return false;
+        }
+        erroEl.style.display = "none";
+        campo.value = formatarBRLJS(val);
+        document.getElementById("iss-calc").textContent = formatarBRLJS(val * 0.02);
+        return true;
+    }
+
+    function tratarEnterValor(event, campo) {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            if (formatarValorFinal(campo)) {
+                campo.blur();
+                document.getElementById("btn-transmitir").focus();
+            }
+        }
+    }
+
+    function validarFormulario() {
+        const campoCPF = document.getElementById("cpf");
+        if (!validarCPFJS(campoCPF.value)) {
+            document.getElementById("cpf-erro").style.display = "block";
+            campoCPF.focus();
+            return false;
+        }
+        const campoValor = document.getElementById("valor");
+        if (!formatarValorFinal(campoValor)) {
+            campoValor.focus();
+            return false;
+        }
+        return true;
     }
 
     function toggleContrast() {
@@ -346,16 +475,26 @@ HTML_TEMPLATE = """
 @app.route("/", methods=["GET"])
 def index():
     with get_db() as conn:
-        notas = conn.execute("SELECT * FROM notas_fiscais ORDER BY id DESC").fetchall()
+        rows = conn.execute("SELECT * FROM notas_fiscais ORDER BY id DESC").fetchall()
+
+    notas = []
+    for r in rows:
+        item = dict(r)
+        item["valor_fmt"] = fmt_brl(item["valor"])
+        item["valor_iss_fmt"] = fmt_brl(item["valor_iss"])
+        notas.append(item)
+
     total_faturado = sum(n["valor"] for n in notas)
     total_iss = sum(n["valor_iss"] for n in notas)
     emitida = request.args.get("emitida")
+    erro = request.args.get("erro")
     return render_template_string(
         HTML_TEMPLATE,
         notas=notas,
-        total_faturado=total_faturado,
-        total_iss=total_iss,
+        total_faturado_fmt=fmt_brl(total_faturado),
+        total_iss_fmt=fmt_brl(total_iss),
         emitida=emitida,
+        erro=erro,
     )
 
 
@@ -364,7 +503,14 @@ def emitir():
     paciente = request.form.get("paciente", "").strip()
     cpf = request.form.get("cpf", "").strip()
     servico = request.form.get("servico", "").strip()
-    valor = float(request.form.get("valor", 180.00))
+    valor = parse_valor_brl(request.form.get("valor", "0"))
+
+    if not cpf_valido(cpf):
+        return redirect(url_for("index", erro="Falha na emissão: CPF inválido ou sequência repetida bloqueada pela validação fiscal."))
+
+    if valor <= 0 or valor > 999999.99:
+        return redirect(url_for("index", erro="Falha na emissão: informe um valor monetário válido maior que R$ 0,00."))
+
     aliquota_iss = 2.00
     valor_iss = round(valor * (aliquota_iss / 100.0), 2)
     data_emissao = datetime.now().strftime("%d/%m/%Y %H:%M")
@@ -412,4 +558,3 @@ def health():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
     app.run(host="0.0.0.0", port=port)
-    
