@@ -89,7 +89,7 @@ def init_db():
         novas_colunas = {
             "ambiente_nacional": "'1 - Produção (ADN Receita Federal)'",
             "serie_dps": "'00001'",
-            "cnae_principal": "'8650-0/03 - Atividades de psicologia e psicanálise'",
+            "cnae_principal": "'8650-0/03 — Atividades de psicologia e psicanálise'",
             "endereco_prestador": "'Av. General Flores da Cunha, 1250 - Sala 302, Centro - CEP 94910-001'",
             "codigo_ibge": "'4303103'",
             "telefone_prestador": "'(51) 99627-1436'",
@@ -99,8 +99,8 @@ def init_db():
             "regime_especial_trib": "'0 - Nenhum'",
             "exigibilidade_issqn": "'1 - Exigível (Recolhimento via DAS)'",
             "retencao_issqn_csrf": "'1 - Não Retido (Dispensa Simples Nacional)'",
-            "codigo_nbs": "'1.2301.21.00 - Serviços de psicologia'",
-            "regra_ibs_cbs": "'Transição 2026 (NT 004/009 - Grupo IBS/CBS facultativo no ADN)'",
+            "codigo_nbs": "'1.2301.21.00 — Serviços de psicologia'",
+            "regra_ibs_cbs": "'Transição 2026 (NT 004/009 — Grupo IBS/CBS facultativo no ADN)'",
         }
         for col, default_val in novas_colunas.items():
             if col not in cols_existentes:
@@ -125,7 +125,7 @@ def init_db():
                     "CASA PSICO PSICOLOGIA CLÍNICA LTDA",
                     "63.897.592/0001-06",
                     "ISENTO / SIMPLES NACIONAL",
-                    "8650-0/03 - Atividades de psicologia e psicanálise",
+                    "8650-0/03 — Atividades de psicologia e psicanálise",
                     "Av. General Flores da Cunha, 1250 - Sala 302, Centro - CEP 94910-001",
                     "Cachoeirinha - RS",
                     "4303103",
@@ -139,8 +139,8 @@ def init_db():
                     "1 - Não Retido (Dispensa Simples Nacional)",
                     6.00,
                     "04.16.01 — Psicologia e Psicanálise (LC 116/03)",
-                    "1.2301.21.00 - Serviços de psicologia",
-                    "Transição 2026 (NT 004/009 - Grupo IBS/CBS facultativo no ADN)",
+                    "1.2301.21.00 — Serviços de psicologia",
+                    "Transição 2026 (NT 004/009 — Grupo IBS/CBS facultativo no ADN)",
                     "Lucas Felipe Apollo Poletti (LUYON Assessoria Contábil)",
                     "CRC/RS Ativo",
                     datetime.now().strftime("%d/%m/%Y %H:%M"),
@@ -705,7 +705,7 @@ HTML_TEMPLATE = """
         }
         dialog {
             background: var(--card-bg); color: var(--text-color); border: 2px solid var(--border);
-            border-radius: 10px; padding: 22px; max-width: 840px; width: 94%; max-height: 90vh; overflow-y: auto;
+            border-radius: 10px; padding: 22px; max-width: 880px; width: 94%; max-height: 90vh; overflow-y: auto;
         }
         dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
         .section-divider {
@@ -878,11 +878,11 @@ HTML_TEMPLATE = """
     </div>
 </div>
 
-<!-- Modal: Parametrização Fiscal Completa (Leiaute DPS / DANFSe Nacional) -->
+<!-- Modal: Parametrização Fiscal com Seletores Oficiais (Leiaute DPS / DANFSe Nacional) -->
 <dialog id="modal-fiscal">
     <h3 style="margin-top:0;">Parametrização Fiscal — Padrão Nacional NFS-e (Área do Contador)</h3>
     <p style="font-size:0.85em; color:var(--muted-text); margin-top:-6px;">
-        Campos estruturados conforme o <strong>Guia do Emissor Público Nacional NFS-e (v1.3)</strong> e <strong>Notas Técnicas 004/007/009</strong>, gravados na tabela <code>configuracoes_fiscais</code> do SQLite.
+        Tabelas de domínio padronizadas conforme o <strong>Guia do Emissor Público Nacional NFS-e (v1.3)</strong> e <strong>Notas Técnicas 004/007/009</strong>.
     </p>
     <form method="POST" action="/configurar-fiscal">
 
@@ -901,7 +901,11 @@ HTML_TEMPLATE = """
             </div>
             <div>
                 <label for="cfg-serie">Série da DPS (serie)</label>
-                <input id="cfg-serie" name="serie_dps" type="text" maxlength="5" value="{{ cfg.serie_dps }}" required>
+                <select id="cfg-serie" name="serie_dps">
+                    <option value="00001" {% if cfg.serie_dps == '00001' %}selected{% endif %}>00001 — Série Principal Emissor Próprio</option>
+                    <option value="00900" {% if cfg.serie_dps == '00900' %}selected{% endif %}>00900 — Série Contingência / Webservice</option>
+                    <option value="80000" {% if cfg.serie_dps == '80000' %}selected{% endif %}>80000 — Série Emissor Público Nacional</option>
+                </select>
             </div>
         </div>
 
@@ -917,29 +921,59 @@ HTML_TEMPLATE = """
             </div>
             <div>
                 <label for="cfg-im">Inscrição Municipal (IM)</label>
-                <input id="cfg-im" name="inscricao_municipal" type="text" value="{{ cfg.inscricao_municipal }}" required>
+                <select id="cfg-im" name="inscricao_municipal">
+                    <option value="ISENTO / SIMPLES NACIONAL" {% if 'ISENTO' in cfg.inscricao_municipal %}selected{% endif %}>ISENTO / SIMPLES NACIONAL</option>
+                    <option value="00012345-6 (Cachoeirinha/RS)" {% if '00012345' in cfg.inscricao_municipal %}selected{% endif %}>00012345-6 (Cachoeirinha/RS)</option>
+                </select>
             </div>
         </div>
 
-        <div class="modal-grid-3">
+        <div class="modal-grid-2">
             <div>
                 <label for="cfg-end">Endereço Completo (Logradouro / CEP)</label>
                 <input id="cfg-end" name="endereco_prestador" type="text" value="{{ cfg.endereco_prestador }}" required>
             </div>
             <div>
-                <label for="cfg-mun">Município / UF</label>
-                <input id="cfg-mun" name="municipio_uf" type="text" value="{{ cfg.municipio_uf }}" required>
-            </div>
-            <div>
-                <label for="cfg-ibge">Código IBGE Município</label>
-                <input id="cfg-ibge" name="codigo_ibge" type="text" maxlength="7" value="{{ cfg.codigo_ibge }}" required>
+                <label for="cfg-mun-ibge">Município / UF & Código IBGE Oficial</label>
+                <select id="cfg-mun-ibge" name="municipio_ibge_combo" onchange="sincronizarIBGE()">
+                    <option value="Cachoeirinha - RS|4303103" {% if cfg.codigo_ibge == '4303103' %}selected{% endif %}>
+                        4303103 — Cachoeirinha / RS
+                    </option>
+                    <option value="Porto Alegre - RS|4314902" {% if cfg.codigo_ibge == '4314902' %}selected{% endif %}>
+                        4314902 — Porto Alegre / RS
+                    </option>
+                    <option value="Gravataí - RS|4309209" {% if cfg.codigo_ibge == '4309209' %}selected{% endif %}>
+                        4309209 — Gravataí / RS
+                    </option>
+                    <option value="Canoas - RS|4304606" {% if cfg.codigo_ibge == '4304606' %}selected{% endif %}>
+                        4304606 — Canoas / RS
+                    </option>
+                    <option value="Tramandaí - RS|4321600" {% if cfg.codigo_ibge == '4321600' %}selected{% endif %}>
+                        4321600 — Tramandaí / RS
+                    </option>
+                </select>
+                <input type="hidden" id="cfg-mun" name="municipio_uf" value="{{ cfg.municipio_uf }}">
+                <input type="hidden" id="cfg-ibge" name="codigo_ibge" value="{{ cfg.codigo_ibge }}">
             </div>
         </div>
 
         <div class="modal-grid-3">
             <div>
-                <label for="cfg-cnae">CNAE Principal</label>
-                <input id="cfg-cnae" name="cnae_principal" type="text" value="{{ cfg.cnae_principal }}" required>
+                <label for="cfg-cnae">CNAE Principal (Tabela IBGE/Concla)</label>
+                <select id="cfg-cnae" name="cnae_principal">
+                    <option value="8650-0/03 — Atividades de psicologia e psicanálise" {% if '8650-0/03' in cfg.cnae_principal %}selected{% endif %}>
+                        8650-0/03 — Atividades de psicologia e psicanálise
+                    </option>
+                    <option value="8630-5/03 — Atividade médica ambulatorial restrita a consultas" {% if '8630-5/03' in cfg.cnae_principal %}selected{% endif %}>
+                        8630-5/03 — Atividade médica ambulatorial restrita a consultas
+                    </option>
+                    <option value="8650-0/02 — Atividades de profissionais da nutrição" {% if '8650-0/02' in cfg.cnae_principal %}selected{% endif %}>
+                        8650-0/02 — Atividades de profissionais da nutrição
+                    </option>
+                    <option value="8650-0/04 — Atividades de fisioterapia" {% if '8650-0/04' in cfg.cnae_principal %}selected{% endif %}>
+                        8650-0/04 — Atividades de fisioterapia
+                    </option>
+                </select>
             </div>
             <div>
                 <label for="cfg-tel">Telefone (Impresso DANFSe)</label>
@@ -954,16 +988,52 @@ HTML_TEMPLATE = """
         <div class="section-divider">3. Classificação do Serviço & Reforma Tributária (LC 116 / NBS / IBS-CBS)</div>
         <div class="modal-grid-3">
             <div>
-                <label for="cfg-cod">Código Tributação Nacional (cTribNac)</label>
-                <input id="cfg-cod" name="codigo_servico" type="text" value="{{ cfg.codigo_servico }}" required>
+                <label for="cfg-cod">Item Serviço Nacional (cTribNac - LC 116/03)</label>
+                <select id="cfg-cod" name="codigo_servico" onchange="sincronizarNBS()">
+                    <option value="04.16.01 — Psicologia e Psicanálise (LC 116/03)" data-nbs="1.2301.21.00 — Serviços de psicologia" {% if '04.16.01' in cfg.codigo_servico %}selected{% endif %}>
+                        04.16.01 — Psicologia e Psicanálise
+                    </option>
+                    <option value="04.01.01 — Medicina e Biomedicina (LC 116/03)" data-nbs="1.2301.11.00 — Serviços médicos especializados" {% if '04.01.01' in cfg.codigo_servico %}selected{% endif %}>
+                        04.01.01 — Medicina e Biomedicina
+                    </option>
+                    <option value="04.08.01 — Terapia Ocupacional, Fisioterapia e Fonoaudiologia" data-nbs="1.2301.22.00 — Serviços de fisioterapia e reabilitação" {% if '04.08.01' in cfg.codigo_servico %}selected{% endif %}>
+                        04.08.01 — Terapia Ocupacional / Fisioterapia / Fono
+                    </option>
+                    <option value="04.09.01 — Terapias de Qualquer Espécie (Nutrição/Holística)" data-nbs="1.2301.29.00 — Outros serviços de saúde humana" {% if '04.09.01' in cfg.codigo_servico %}selected{% endif %}>
+                        04.09.01 — Nutrição e Terapias Especializadas
+                    </option>
+                </select>
             </div>
             <div>
                 <label for="cfg-nbs">Código NBS (Nomenclatura Bras. Serviços)</label>
-                <input id="cfg-nbs" name="codigo_nbs" type="text" value="{{ cfg.codigo_nbs }}" required>
+                <select id="cfg-nbs" name="codigo_nbs">
+                    <option value="1.2301.21.00 — Serviços de psicologia" {% if '1.2301.21.00' in cfg.codigo_nbs %}selected{% endif %}>
+                        1.2301.21.00 — Serviços de psicologia
+                    </option>
+                    <option value="1.2301.11.00 — Serviços médicos especializados" {% if '1.2301.11.00' in cfg.codigo_nbs %}selected{% endif %}>
+                        1.2301.11.00 — Serviços médicos especializados
+                    </option>
+                    <option value="1.2301.22.00 — Serviços de fisioterapia e reabilitação" {% if '1.2301.22.00' in cfg.codigo_nbs %}selected{% endif %}>
+                        1.2301.22.00 — Serviços de fisioterapia e reabilitação
+                    </option>
+                    <option value="1.2301.29.00 — Outros serviços de saúde humana" {% if '1.2301.29.00' in cfg.codigo_nbs %}selected{% endif %}>
+                        1.2301.29.00 — Outros serviços de saúde humana
+                    </option>
+                </select>
             </div>
             <div>
                 <label for="cfg-ibscbs">Regra IBS / CBS (NT 004/009 - LC 214/25)</label>
-                <input id="cfg-ibscbs" name="regra_ibs_cbs" type="text" value="{{ cfg.regra_ibs_cbs }}" required>
+                <select id="cfg-ibscbs" name="regra_ibs_cbs">
+                    <option value="Transição 2026 (NT 004/009 — Grupo IBS/CBS facultativo no ADN)" {% if 'Transição 2026' in cfg.regra_ibs_cbs %}selected{% endif %}>
+                        Transição 2026 (NT 004/009 — Facultativo SN)
+                    </option>
+                    <option value="CST 000 — Tributação Integral IBS/CBS (Alíquota Teste 0,9% + 0,1%)" {% if 'CST 000' in cfg.regra_ibs_cbs %}selected{% endif %}>
+                        CST 000 — Tributação Integral IBS/CBS (Teste)
+                    </option>
+                    <option value="CST 200 — Alíquota Reduzida em 60% (Serviços de Saúde - Art. 130 LC 214)" {% if 'CST 200' in cfg.regra_ibs_cbs %}selected{% endif %}>
+                        CST 200 — Redução 60% Serviços de Saúde (LC 214)
+                    </option>
+                </select>
             </div>
         </div>
 
@@ -998,21 +1068,24 @@ HTML_TEMPLATE = """
 
         <div class="modal-grid-3">
             <div>
-                <label for="cfg-regime">Enquadramento / Anexo</label>
-                <select id="cfg-regime" name="regime_tributario">
-                    <option value="Simples Nacional — Anexo III (Fator R >= 28%)" {% if 'Anexo III' in cfg.regime_tributario %}selected{% endif %}>
-                        Simples Nacional — Anexo III (Fator R &gt;= 28%)
+                <label for="cfg-regime">Enquadramento / Faixa PGDAS-D</label>
+                <select id="cfg-regime" name="regime_tributario" onchange="sugerirAliquota()">
+                    <option value="Simples Nacional — Anexo III (Fator R >= 28%)" data-aliq="6,00" {% if 'Anexo III' in cfg.regime_tributario and 'Faixa 2' not in cfg.regime_tributario %}selected{% endif %}>
+                        Simples Nacional — Anexo III Faixa 1 (6,00%)
                     </option>
-                    <option value="Simples Nacional — Anexo V (Fator R < 28%)" {% if 'Anexo V' in cfg.regime_tributario %}selected{% endif %}>
-                        Simples Nacional — Anexo V (Fator R &lt; 28%)
+                    <option value="Simples Nacional — Anexo III Faixa 2 (RBT12 até 360k)" data-aliq="11,20" {% if 'Faixa 2' in cfg.regime_tributario %}selected{% endif %}>
+                        Simples Nacional — Anexo III Faixa 2 (11,20%)
                     </option>
-                    <option value="Lucro Presumido — ISS Municipal + Federais" {% if 'Lucro Presumido' in cfg.regime_tributario %}selected{% endif %}>
-                        Lucro Presumido — ISS Municipal + Federais
+                    <option value="Simples Nacional — Anexo V (Fator R < 28%)" data-aliq="15,50" {% if 'Anexo V' in cfg.regime_tributario %}selected{% endif %}>
+                        Simples Nacional — Anexo V Faixa 1 (15,50%)
+                    </option>
+                    <option value="Lucro Presumido — ISS Municipal + Federais" data-aliq="13,33" {% if 'Lucro Presumido' in cfg.regime_tributario %}selected{% endif %}>
+                        Lucro Presumido — ISS 2% + Federais (13,33%)
                     </option>
                 </select>
             </div>
             <div>
-                <label for="cfg-aliq">Alíquota Efetiva DAS (%)</label>
+                <label for="cfg-aliq">Alíquota Efetiva PGDAS-D (%)</label>
                 <input id="cfg-aliq" name="aliquota_das" type="text" inputmode="decimal" value="{{ aliquota_fmt }}" required>
             </div>
             <div>
@@ -1130,6 +1203,39 @@ HTML_TEMPLATE = """
 
 <script>
     const ALIQUOTA_DAS = {{ cfg.aliquota_das / 100.0 }};
+
+    function sincronizarIBGE() {
+        const combo = document.getElementById("cfg-mun-ibge").value;
+        const partes = combo.split("|");
+        if (partes.length === 2) {
+            document.getElementById("cfg-mun").value = partes[0];
+            document.getElementById("cfg-ibge").value = partes[1];
+        }
+    }
+
+    function sincronizarNBS() {
+        const sel = document.getElementById("cfg-cod");
+        const opt = sel.options[sel.selectedIndex];
+        const nbsAlvo = opt.getAttribute("data-nbs");
+        if (nbsAlvo) {
+            const selNbs = document.getElementById("cfg-nbs");
+            for (let i = 0; i < selNbs.options.length; i++) {
+                if (selNbs.options[i].value === nbsAlvo) {
+                    selNbs.selectedIndex = i;
+                    break;
+                }
+            }
+        }
+    }
+
+    function sugerirAliquota() {
+        const sel = document.getElementById("cfg-regime");
+        const opt = sel.options[sel.selectedIndex];
+        const aliq = opt.getAttribute("data-aliq");
+        if (aliq) {
+            document.getElementById("cfg-aliq").value = aliq;
+        }
+    }
 
     function apenasDigitos(str) {
         let out = "";
@@ -1333,7 +1439,6 @@ def index():
         if emitida and item["numero"] == emitida:
             nota_emitida_obj = item
 
-        # Extrai competência MM/AAAA a partir de DD/MM/AAAA HH:MM
         if len(item["data_emissao"]) >= 10:
             competencias_set.add(item["data_emissao"][3:10])
 
