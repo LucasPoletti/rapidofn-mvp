@@ -474,9 +474,16 @@ HTML_TEMPLATE = """
         }
         .brand { font-weight: 800; font-size: 1.3em; }
         .badge-luyon { font-size: 0.78em; color: var(--muted-text); display: block; margin-top: 2px; }
+        .a11y-bar { display: flex; flex-wrap: wrap; gap: 8px; }
         .a11y-bar button {
             background: transparent; color: var(--text-color); border: 2px solid var(--border);
-            padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 700; margin-left: 8px;
+            padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 700;
+        }
+        .a11y-bar button.btn-pacientes {
+            background: var(--primary); color: #ffffff; border-color: var(--primary);
+        }
+        body.high-contrast .a11y-bar button.btn-pacientes {
+            background: #ffff00; color: #000000; border-color: #ffff00;
         }
         .a11y-bar button[aria-pressed="true"] {
             background: var(--primary); color: #ffffff;
@@ -552,7 +559,7 @@ HTML_TEMPLATE = """
         body.high-contrast .btn-pdf { background: #ffff00; color: #000000; border-color: #ffff00; }
         dialog {
             background: var(--card-bg); color: var(--text-color); border: 2px solid var(--border);
-            border-radius: 10px; padding: 24px; max-width: 480px; width: 90%;
+            border-radius: 10px; padding: 24px; max-width: 680px; width: 92%;
         }
         dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
     </style>
@@ -564,7 +571,10 @@ HTML_TEMPLATE = """
             <span class="brand">RápidoNF — Clínica Casa Psico</span>
             <span class="badge-luyon">Tecnologia Luyon Automações® | Simples Nacional — Anexo III (Alíquota 6,00% inicial)</span>
         </div>
-        <div class="a11y-bar" role="region" aria-label="Controles de Acessibilidade">
+        <div class="a11y-bar" role="region" aria-label="Ações e Controles de Acessibilidade">
+            <button type="button" class="btn-pacientes" onclick="document.getElementById('modal-pacientes').showModal()">
+                Pacientes Cadastrados ({{ pacientes|length }})
+            </button>
             <button type="button" id="btn-contrast" onclick="toggleContrast()" aria-pressed="false">
                 Alto Contraste
             </button>
@@ -679,6 +689,45 @@ HTML_TEMPLATE = """
     </div>
 </div>
 
+<dialog id="modal-pacientes">
+    <h3 style="margin-top:0;">Base de Pacientes Cadastrados (Tomadores)</h3>
+    <p style="font-size:0.88em; color:var(--muted-text); margin-top:-6px;">
+        Selecione um paciente cadastrado para preencher automaticamente o formulário de emissão de NFS-e.
+    </p>
+    <table>
+        <thead>
+            <tr>
+                <th>Paciente</th>
+                <th>CPF Validado</th>
+                <th>Sessões / Total</th>
+                <th>Ação</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in pacientes %}
+            <tr>
+                <td><strong>{{ p.paciente }}</strong></td>
+                <td>{{ p.cpf }}</td>
+                <td>
+                    {{ p.qtd_notas }} nota(s)<br>
+                    <small>R$ {{ p.total_fmt }}</small>
+                </td>
+                <td>
+                    <button type="button" class="btn-pdf"
+                        onclick="selecionarPaciente('{{ p.paciente }}', '{{ p.cpf }}')">
+                        Usar na Nota
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <button type="button" class="btn-recibo" style="width:100%; margin-top:14px; padding:10px;"
+        onclick="document.getElementById('modal-pacientes').close()">
+        Fechar Base de Pacientes
+    </button>
+</dialog>
+
 <dialog id="modal-recibo">
     <h3 style="margin-top:0;">Espelho da NFS-e Autorizada</h3>
     <p><strong>Prestador:</strong> CASA PSICO PSICOLOGIA CLÍNICA LTDA (CNPJ 63.897.592/0001-06)</p>
@@ -743,6 +792,17 @@ HTML_TEMPLATE = """
 
     function formatarBRLJS(num) {
         return num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function selecionarPaciente(nome, cpf) {
+        const campoPac = document.getElementById("paciente");
+        const campoCPF = document.getElementById("cpf");
+        campoPac.value = nome;
+        campoCPF.value = cpf;
+        campoCPF.setCustomValidity("");
+        document.getElementById("cpf-erro").style.display = "none";
+        document.getElementById("modal-pacientes").close();
+        document.getElementById("valor").focus();
     }
 
     document.addEventListener("DOMContentLoaded", function () {
@@ -857,6 +917,12 @@ HTML_TEMPLATE = """
 def index():
     with get_db() as conn:
         rows = conn.execute("SELECT * FROM notas_fiscais ORDER BY id DESC").fetchall()
+        pac_rows = conn.execute("""
+            SELECT paciente, cpf, COUNT(*) AS qtd_notas, SUM(valor) AS total_valor
+            FROM notas_fiscais
+            GROUP BY cpf, paciente
+            ORDER BY MAX(id) DESC
+        """).fetchall()
 
     notas = []
     for r in rows:
@@ -865,6 +931,12 @@ def index():
         item["valor_das_fmt"] = fmt_brl(item["valor_das"])
         notas.append(item)
 
+    pacientes = []
+    for p in pac_rows:
+        item_p = dict(p)
+        item_p["total_fmt"] = fmt_brl(item_p["total_valor"])
+        pacientes.append(item_p)
+
     total_faturado = sum(n["valor"] for n in notas)
     total_das = sum(n["valor_das"] for n in notas)
     emitida = request.args.get("emitida")
@@ -872,6 +944,7 @@ def index():
     return render_template_string(
         HTML_TEMPLATE,
         notas=notas,
+        pacientes=pacientes,
         total_faturado_fmt=fmt_brl(total_faturado),
         total_das_fmt=fmt_brl(total_das),
         emitida=emitida,
