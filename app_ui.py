@@ -130,41 +130,34 @@ def gerar_pdf_nfse_bytes(nota: dict) -> bytes:
 
     linhas_conteudo = [
         "q",
-        # Moldura externa A4 (595 x 842 pt)
         "0.06 0.46 0.43 RG 1.5 w 36 36 523 770 re S",
-        # Cabeçalho destacado
         "0.06 0.46 0.43 rg 36 742 523 64 re f",
         "1 1 1 rg BT /F2 15 Tf 50 780 Td (DANFSe - DOCUMENTO AUXILIAR DA NFS-e) Tj ET",
         "1 1 1 rg BT /F1 9.5 Tf 50 762 Td (Sistema RapidoNF | Tecnologia Luyon Automacoes - Emissao Simplificada) Tj ET",
         f"1 1 1 rg BT /F2 12 Tf 430 780 Td (NFS-e #{esc(nota['numero'])}) Tj ET",
         f"1 1 1 rg BT /F1 9 Tf 430 762 Td ({esc(nota['data_emissao'])}) Tj ET",
-        # Bloco 1: Prestador
         "0.12 0.16 0.23 rg BT /F2 10 Tf 50 715 Td (1. IDENTIFICACAO DO PRESTADOR DE SERVICOS) Tj ET",
         "0.8 0.84 0.88 RG 0.8 w 50 708 m 545 708 l S",
         "BT /F2 9.5 Tf 50 692 Td (Razao Social:) Tj /F1 9.5 Tf 135 692 Td (CASA PSICO PSICOLOGIA CLINICA LTDA) Tj ET",
         "BT /F2 9.5 Tf 50 676 Td (CNPJ:) Tj /F1 9.5 Tf 135 676 Td (63.897.592/0001-06) Tj ET",
         "BT /F2 9.5 Tf 50 660 Td (Enquadramento:) Tj /F1 9.5 Tf 135 660 Td (Simples Nacional - Anexo III (Aliquota 6,00% inicial)) Tj ET",
         "BT /F2 9.5 Tf 50 644 Td (Codigo Servico:) Tj /F1 9.5 Tf 135 644 Td (LC 116/2003 - Item 04.16 - Psicologia e Psicanalise) Tj ET",
-        # Bloco 2: Tomador
         "BT /F2 10 Tf 50 612 Td (2. IDENTIFICACAO DO TOMADOR (PACIENTE)) Tj ET",
         "50 605 m 545 605 l S",
         f"BT /F2 9.5 Tf 50 589 Td (Nome Completo:) Tj /F1 9.5 Tf 145 589 Td ({esc(nota['paciente'])}) Tj ET",
         f"BT /F2 9.5 Tf 50 573 Td (CPF Validado:) Tj /F1 9.5 Tf 145 573 Td ({esc(nota['cpf'])}) Tj ET",
-        # Bloco 3: Discriminação do Serviço
         "BT /F2 10 Tf 50 541 Td (3. DISCRIMINACAO DOS SERVICOS PRESTADOS) Tj ET",
         "50 534 m 545 534 l S",
         "0.96 0.97 0.98 rg 50 475 495 50 re f",
         "0.8 0.84 0.88 RG 50 475 495 50 re S",
         f"0.12 0.16 0.23 rg BT /F1 10 Tf 60 505 Td ({esc(nota['servico'])}) Tj ET",
         "BT /F1 8.5 Tf 60 488 Td (Atendimento clinico realizado conforme prontuario reservado sob sigilo profissional.) Tj ET",
-        # Bloco 4: Valores e Apuração Simples Nacional
         "BT /F2 10 Tf 50 445 Td (4. VALORES E APURACAO TRIBUTARIA (SIMPLES NACIONAL)) Tj ET",
         "50 438 m 545 438 l S",
         f"BT /F2 10 Tf 50 418 Td (Valor Bruto dos Servicos:) Tj /F2 11 Tf 220 418 Td (R$ {esc(fmt_brl(nota['valor']))}) Tj ET",
         f"BT /F2 10 Tf 50 398 Td (Aliquota Anexo III (Inicial):) Tj /F1 10 Tf 220 398 Td (6,00%) Tj ET",
         f"BT /F2 10 Tf 50 378 Td (Valor do DAS Previsto (6,00%):) Tj /F2 11 Tf 220 378 Td (R$ {esc(fmt_brl(nota['valor_das']))}) Tj ET",
         f"BT /F2 10 Tf 50 358 Td (Situacao Fiscal:) Tj /F2 10 Tf 220 358 Td ({esc(nota['status'])}) Tj ET",
-        # Rodapé de Autenticidade
         "50 110 m 545 110 l S",
         "BT /F2 8.5 Tf 50 94 Td (AUTENTICIDADE E RASTREABILIDADE DIGITAL - RAPIDONF MVP) Tj ET",
         f"BT /F1 8 Tf 50 80 Td (Codigo de Verificacao: RNF-{esc(nota['numero'])}-CASAPSICO-SNIII) Tj ET",
