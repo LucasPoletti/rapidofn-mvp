@@ -6,7 +6,6 @@ from flask import Flask, render_template_string, request, redirect, url_for, jso
 
 app = Flask(__name__)
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rapidofn.db")
-ALIQUOTA_DAS_ANEXO_III = 6.00
 
 
 def cpf_valido(cpf: str) -> bool:
@@ -45,8 +44,52 @@ def get_db():
     return conn
 
 
+def get_config_fiscal() -> dict:
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM configuracoes_fiscais WHERE id = 1").fetchone()
+        return dict(row)
+
+
 def init_db():
     with get_db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS configuracoes_fiscais (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                razao_social TEXT NOT NULL,
+                cnpj TEXT NOT NULL,
+                inscricao_municipal TEXT NOT NULL,
+                municipio_uf TEXT NOT NULL,
+                regime_tributario TEXT NOT NULL,
+                aliquota_das REAL NOT NULL,
+                codigo_servico TEXT NOT NULL,
+                contador_responsavel TEXT NOT NULL,
+                crc_contador TEXT NOT NULL,
+                ultima_atualizacao TEXT NOT NULL
+            )
+        """)
+        cfg_exists = conn.execute("SELECT COUNT(*) FROM configuracoes_fiscais WHERE id = 1").fetchone()[0]
+        if cfg_exists == 0:
+            conn.execute(
+                """
+                INSERT INTO configuracoes_fiscais
+                (id, razao_social, cnpj, inscricao_municipal, municipio_uf, regime_tributario,
+                 aliquota_das, codigo_servico, contador_responsavel, crc_contador, ultima_atualizacao)
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "CASA PSICO PSICOLOGIA CLÍNICA LTDA",
+                    "63.897.592/0001-06",
+                    "ISENTO / SIMPLES NACIONAL",
+                    "Cachoeirinha - RS",
+                    "Simples Nacional — Anexo III (Fator R >= 28%)",
+                    6.00,
+                    "04.16.01 — Psicologia e Psicanálise (LC 116/03)",
+                    "Lucas Felipe Apollo Poletti (LUYON Assessoria Contábil)",
+                    "CRC/RS Ativo",
+                    datetime.now().strftime("%d/%m/%Y %H:%M"),
+                ),
+            )
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS notas_fiscais (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,13 +115,6 @@ def init_db():
             DELETE FROM notas_fiscais
             WHERE cpf LIKE '111.111%' OR cpf LIKE '222.222%' OR cpf LIKE '000.000%'
         """)
-        conn.execute("""
-            UPDATE notas_fiscais
-            SET aliquota_das = 6.00,
-                valor_das = ROUND(valor * 0.06, 2),
-                regime = 'Simples Nacional - Anexo III (Alíquota 6,00% inicial)'
-            WHERE aliquota_das != 6.00
-        """)
         total = conn.execute("SELECT COUNT(*) FROM notas_fiscais").fetchone()[0]
         if total == 0:
             iniciais = [
@@ -88,9 +124,9 @@ def init_db():
                     "529.982.247-25",
                     "Sessão de Psicoterapia Individual (50 min)",
                     180.00,
-                    ALIQUOTA_DAS_ANEXO_III,
-                    round(180.00 * (ALIQUOTA_DAS_ANEXO_III / 100.0), 2),
-                    "Simples Nacional - Anexo III (Alíquota 6,00% inicial)",
+                    6.00,
+                    10.80,
+                    "Simples Nacional — Anexo III (Alíquota 6,00%)",
                     "AUTORIZADA",
                     "13/11/2026 09:10",
                 ),
@@ -100,9 +136,9 @@ def init_db():
                     "153.509.460-56",
                     "Avaliação Psicológica Clínica",
                     250.00,
-                    ALIQUOTA_DAS_ANEXO_III,
-                    round(250.00 * (ALIQUOTA_DAS_ANEXO_III / 100.0), 2),
-                    "Simples Nacional - Anexo III (Alíquota 6,00% inicial)",
+                    6.00,
+                    15.00,
+                    "Simples Nacional — Anexo III (Alíquota 6,00%)",
                     "AUTORIZADA",
                     "13/11/2026 09:22",
                 ),
@@ -125,7 +161,7 @@ DANFSE_NACIONAL_TEMPLATE = """
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>DANFSe Nacional - NFS-e #{{ nota.numero }} - Casa Psico</title>
+    <title>DANFSe Nacional - NFS-e #{{ nota.numero }} - {{ cfg.razao_social }}</title>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -304,25 +340,25 @@ DANFSE_NACIONAL_TEMPLATE = """
             <div class="row-3">
                 <div>
                     <span class="lbl">Nome / Razão Social</span>
-                    <span class="val">CASA PSICO PSICOLOGIA CLÍNICA LTDA</span>
+                    <span class="val">{{ cfg.razao_social }}</span>
                 </div>
                 <div>
                     <span class="lbl">CNPJ / CPF</span>
-                    <span class="val">63.897.592/0001-06</span>
+                    <span class="val">{{ cfg.cnpj }}</span>
                 </div>
                 <div>
                     <span class="lbl">Inscrição Municipal</span>
-                    <span class="val">ISENTO / SIMPLES NACIONAL</span>
+                    <span class="val">{{ cfg.inscricao_municipal }}</span>
                 </div>
             </div>
             <div class="row-2" style="margin-top:6px;">
                 <div>
                     <span class="lbl">Município / UF</span>
-                    <span class="val">Porto Alegre - RS</span>
+                    <span class="val">{{ cfg.municipio_uf }}</span>
                 </div>
                 <div>
                     <span class="lbl">Regime Especial de Tributação</span>
-                    <span class="val">Optante pelo Simples Nacional — Anexo III (Alíquota 6,00% inicial)</span>
+                    <span class="val">{{ nota.regime }}</span>
                 </div>
             </div>
         </div>
@@ -346,11 +382,11 @@ DANFSE_NACIONAL_TEMPLATE = """
             <div class="row-3" style="margin-bottom:6px;">
                 <div>
                     <span class="lbl">Código de Tributação Nacional (LC 116/03)</span>
-                    <span class="val">04.16.01 — Psicologia e Psicanálise</span>
+                    <span class="val">{{ cfg.codigo_servico }}</span>
                 </div>
                 <div>
                     <span class="lbl">Local da Prestação</span>
-                    <span class="val">Porto Alegre - RS</span>
+                    <span class="val">{{ cfg.municipio_uf }}</span>
                 </div>
                 <div>
                     <span class="lbl">Situação do Documento</span>
@@ -362,7 +398,7 @@ DANFSE_NACIONAL_TEMPLATE = """
                 <span class="val" style="font-weight:normal; margin-top:4px;">
                     {{ nota.servico }}<br>
                     Atendimento clínico realizado conforme prontuário reservado sob sigilo profissional (Resolução CFP nº 010/2005).<br>
-                    Documento emitido por empresa optante pelo Simples Nacional — Anexo III (Alíquota inicial de 6,00%).
+                    Parâmetros fiscais homologados por: {{ cfg.contador_responsavel }}.
                 </span>
             </div>
         </div>
@@ -379,8 +415,8 @@ DANFSE_NACIONAL_TEMPLATE = """
                     <span class="val">R$ {{ nota.valor_fmt }}</span>
                 </div>
                 <div>
-                    <span class="lbl">Alíquota Simples (Anexo III)</span>
-                    <span class="val">6,00%</span>
+                    <span class="lbl">Alíquota Aplicada</span>
+                    <span class="val">{{ nota.aliquota_fmt }}%</span>
                 </div>
                 <div>
                     <span class="lbl">Valor do DAS Previsto</span>
@@ -411,8 +447,8 @@ DANFSE_NACIONAL_TEMPLATE = """
             <div class="footer-info">
                 <strong>INFORMAÇÕES COMPLEMENTARES E AUTENTICIDADE</strong><br>
                 1. Documento emitido em conformidade com o layout do Padrão Nacional da NFS-e.<br>
-                2. Não gera direito a crédito de IPI/ICMS. Recolhimento unificado via guia DAS (Simples Nacional — Anexo III).<br>
-                3. Código Verificador: <strong>RNF-{{ nota.numero }}-CASAPSICO-SNIII</strong> | Emitido via <strong>RápidoNF MVP</strong>.
+                2. Não gera direito a crédito de IPI/ICMS. Recolhimento unificado via guia DAS ({{ nota.regime }}).<br>
+                3. Código Verificador: <strong>RNF-{{ nota.numero }}-CASAPSICO-SNIII</strong> | Responsável Contábil: <strong>{{ cfg.contador_responsavel }}</strong>.
             </div>
             <div class="qr-box">
                 <svg width="68" height="68" viewBox="0 0 25 25" shape-rendering="crispEdges">
@@ -433,7 +469,7 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RápidoNF | Emissão Inteligente NFS-e - Casa Psico</title>
+    <title>RápidoNF | Emissão Inteligente NFS-e - {{ cfg.razao_social }}</title>
     <style>
         :root {
             --bg-color: #f4f7f9;
@@ -466,7 +502,7 @@ HTML_TEMPLATE = """
             padding: 20px;
             transition: all 0.2s ease;
         }
-        .container { max-width: 1120px; margin: 0 auto; }
+        .container { max-width: 1160px; margin: 0 auto; }
         header {
             display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;
             background: var(--card-bg); padding: 16px 24px; border-radius: 10px;
@@ -482,7 +518,11 @@ HTML_TEMPLATE = """
         .a11y-bar button.btn-pacientes {
             background: var(--primary); color: #ffffff; border-color: var(--primary);
         }
-        body.high-contrast .a11y-bar button.btn-pacientes {
+        .a11y-bar button.btn-fiscal {
+            background: #1e293b; color: #ffffff; border-color: #1e293b;
+        }
+        body.high-contrast .a11y-bar button.btn-pacientes,
+        body.high-contrast .a11y-bar button.btn-fiscal {
             background: #ffff00; color: #000000; border-color: #ffff00;
         }
         .a11y-bar button[aria-pressed="true"] {
@@ -559,9 +599,17 @@ HTML_TEMPLATE = """
         body.high-contrast .btn-pdf { background: #ffff00; color: #000000; border-color: #ffff00; }
         dialog {
             background: var(--card-bg); color: var(--text-color); border: 2px solid var(--border);
-            border-radius: 10px; padding: 24px; max-width: 680px; width: 92%;
+            border-radius: 10px; padding: 24px; max-width: 720px; width: 92%;
         }
-        dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+        dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
+        .modal-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        @media (max-width: 640px) {
+            .modal-grid-2 { grid-template-columns: 1fr; }
+        }
+        .fiscal-meta {
+            margin-top: 12px; padding: 10px; border-radius: 6px;
+            background: var(--bg-color); border: 1px solid var(--border); font-size: 0.82em;
+        }
     </style>
 </head>
 <body>
@@ -569,9 +617,14 @@ HTML_TEMPLATE = """
     <header role="banner">
         <div>
             <span class="brand">RápidoNF — Clínica Casa Psico</span>
-            <span class="badge-luyon">Tecnologia Luyon Automações® | Simples Nacional — Anexo III (Alíquota 6,00% inicial)</span>
+            <span class="badge-luyon">
+                Tecnologia Luyon Automações® | {{ cfg.regime_tributario }} (Alíquota {{ aliquota_fmt }}%)
+            </span>
         </div>
-        <div class="a11y-bar" role="region" aria-label="Ações e Controles de Acessibilidade">
+        <div class="a11y-bar" role="region" aria-label="Menus Operacionais, Contábeis e de Acessibilidade">
+            <button type="button" class="btn-fiscal" onclick="document.getElementById('modal-fiscal').showModal()">
+                Configurações Fiscais (Contador)
+            </button>
             <button type="button" class="btn-pacientes" onclick="document.getElementById('modal-pacientes').showModal()">
                 Pacientes Cadastrados ({{ pacientes|length }})
             </button>
@@ -593,6 +646,12 @@ HTML_TEMPLATE = """
     </div>
     {% endif %}
 
+    {% if config_salva %}
+    <div class="alert-success" role="status">
+        <span>Parâmetros fiscais atualizados no banco de dados SQLite por {{ cfg.contador_responsavel }}!</span>
+    </div>
+    {% endif %}
+
     {% if erro %}
     <div class="alert-error" role="alert">
         {{ erro }}
@@ -609,7 +668,7 @@ HTML_TEMPLATE = """
             <div class="kpi-value">R$ {{ total_faturado_fmt }}</div>
         </div>
         <div class="kpi-card">
-            <div class="kpi-label">DAS Previsto (Simples Nacional 6,00%)</div>
+            <div class="kpi-label">DAS Previsto (Alíquota {{ aliquota_fmt }}%)</div>
             <div class="kpi-value">R$ {{ total_das_fmt }}</div>
         </div>
     </div>
@@ -625,7 +684,7 @@ HTML_TEMPLATE = """
                 <input id="cpf" name="cpf" type="text" maxlength="14" placeholder="000.000.000-00" required>
                 <div id="cpf-erro" class="field-error">CPF inválido. Informe um CPF válido com dígitos verificadores reais.</div>
 
-                <label for="servico">Descrição do Serviço Clínico (LC 116/03 - 04.16)</label>
+                <label for="servico">Descrição do Serviço Clínico ({{ cfg.codigo_servico[:8] }})</label>
                 <select id="servico" name="servico">
                     <option>Sessão de Psicoterapia Individual (50 min)</option>
                     <option>Psicoterapia Infantil / Orientação Parental</option>
@@ -637,8 +696,8 @@ HTML_TEMPLATE = """
                 <div id="valor-erro" class="field-error">Informe um valor válido maior que R$ 0,00.</div>
 
                 <div class="tax-box" id="tax-preview">
-                    <strong>Enquadramento Automático:</strong> Simples Nacional — Anexo III (Alíquota 6,00% inicial)<br>
-                    <strong>Valor do DAS Estimado (6,00%):</strong> R$ <span id="das-calc">10,80</span>
+                    <strong>Enquadramento Ativo (Banco):</strong> {{ cfg.regime_tributario }}<br>
+                    <strong>Valor do DAS Estimado ({{ aliquota_fmt }}%):</strong> R$ <span id="das-calc">{{ das_padrao_fmt }}</span>
                 </div>
 
                 <button type="submit" id="btn-transmitir" class="btn-submit">Transmitir NFS-e Agora</button>
@@ -669,14 +728,14 @@ HTML_TEMPLATE = """
                         </td>
                         <td>
                             R$ {{ n.valor_fmt }}<br>
-                            <small>DAS (6%): R$ {{ n.valor_das_fmt }}</small>
+                            <small>DAS ({{ n.aliquota_fmt }}%): R$ {{ n.valor_das_fmt }}</small>
                         </td>
                         <td>
                             <span class="status-ok">{{ n.status }}</span>
                             <div class="actions-cell">
                                 <a href="/nota/{{ n.numero }}/pdf" target="_blank" class="btn-pdf">Gerar PDF</a>
                                 <button type="button" class="btn-recibo"
-                                    onclick="abrirRecibo('{{ n.numero }}', '{{ n.paciente }}', '{{ n.cpf }}', '{{ n.servico }}', '{{ n.valor_fmt }}', '{{ n.valor_das_fmt }}', '{{ n.data_emissao }}')">
+                                    onclick="abrirRecibo('{{ n.numero }}', '{{ n.paciente }}', '{{ n.cpf }}', '{{ n.servico }}', '{{ n.valor_fmt }}', '{{ n.valor_das_fmt }}', '{{ n.aliquota_fmt }}', '{{ n.data_emissao }}')">
                                     Ver Espelho
                                 </button>
                             </div>
@@ -689,6 +748,84 @@ HTML_TEMPLATE = """
     </div>
 </div>
 
+<!-- Modal: Configurações Fiscais do Contador (Persistido no SQLite) -->
+<dialog id="modal-fiscal">
+    <h3 style="margin-top:0;">Parametrização Fiscal & Tributária (Área do Contador)</h3>
+    <p style="font-size:0.86em; color:var(--muted-text); margin-top:-6px;">
+        Os parâmetros abaixo são gravados na tabela <code>configuracoes_fiscais</code> do banco SQLite e aplicados automaticamente nas novas emissões e no DANFSe.
+    </p>
+    <form method="POST" action="/configurar-fiscal">
+        <div class="modal-grid-2">
+            <div>
+                <label for="cfg-razao">Razão Social do Prestador</label>
+                <input id="cfg-razao" name="razao_social" type="text" value="{{ cfg.razao_social }}" required>
+            </div>
+            <div>
+                <label for="cfg-cnpj">CNPJ do Prestador</label>
+                <input id="cfg-cnpj" name="cnpj" type="text" value="{{ cfg.cnpj }}" required>
+            </div>
+        </div>
+
+        <div class="modal-grid-2">
+            <div>
+                <label for="cfg-im">Inscrição Municipal</label>
+                <input id="cfg-im" name="inscricao_municipal" type="text" value="{{ cfg.inscricao_municipal }}" required>
+            </div>
+            <div>
+                <label for="cfg-mun">Município / UF de Incidência</label>
+                <input id="cfg-mun" name="municipio_uf" type="text" value="{{ cfg.municipio_uf }}" required>
+            </div>
+        </div>
+
+        <div class="modal-grid-2">
+            <div>
+                <label for="cfg-regime">Enquadramento Simples Nacional</label>
+                <select id="cfg-regime" name="regime_tributario">
+                    <option value="Simples Nacional — Anexo III (Fator R >= 28%)" {% if 'Anexo III' in cfg.regime_tributario %}selected{% endif %}>
+                        Simples Nacional — Anexo III (Fator R &gt;= 28%)
+                    </option>
+                    <option value="Simples Nacional — Anexo V (Fator R < 28%)" {% if 'Anexo V' in cfg.regime_tributario %}selected{% endif %}>
+                        Simples Nacional — Anexo V (Fator R &lt; 28%)
+                    </option>
+                    <option value="Lucro Presumido — ISS Municipal + Federais" {% if 'Lucro Presumido' in cfg.regime_tributario %}selected{% endif %}>
+                        Lucro Presumido — ISS Municipal + Federais
+                    </option>
+                </select>
+            </div>
+            <div>
+                <label for="cfg-aliq">Alíquota Efetiva DAS / Tributo (%)</label>
+                <input id="cfg-aliq" name="aliquota_das" type="text" inputmode="decimal" value="{{ aliquota_fmt }}" required>
+            </div>
+        </div>
+
+        <label for="cfg-cod">Código de Tributação Nacional (LC 116/03)</label>
+        <input id="cfg-cod" name="codigo_servico" type="text" value="{{ cfg.codigo_servico }}" required>
+
+        <div class="modal-grid-2">
+            <div>
+                <label for="cfg-cont">Contador / Assessoria Responsável</label>
+                <input id="cfg-cont" name="contador_responsavel" type="text" value="{{ cfg.contador_responsavel }}" required>
+            </div>
+            <div>
+                <label for="cfg-crc">Registro Profissional (CRC)</label>
+                <input id="cfg-crc" name="crc_contador" type="text" value="{{ cfg.crc_contador }}" required>
+            </div>
+        </div>
+
+        <div class="fiscal-meta">
+            <strong>Última Homologação Gravada no Banco:</strong> {{ cfg.ultima_atualizacao }} |
+            <strong>Responsável Técnico:</strong> {{ cfg.contador_responsavel }} ({{ cfg.crc_contador }})
+        </div>
+
+        <button type="submit" class="btn-submit">Salvar Parâmetros Fiscais no Banco</button>
+        <button type="button" class="btn-recibo" style="width:100%; margin-top:8px; padding:10px;"
+            onclick="document.getElementById('modal-fiscal').close()">
+            Cancelar / Fechar
+        </button>
+    </form>
+</dialog>
+
+<!-- Modal: Pacientes Cadastrados -->
 <dialog id="modal-pacientes">
     <h3 style="margin-top:0;">Base de Pacientes Cadastrados (Tomadores)</h3>
     <p style="font-size:0.88em; color:var(--muted-text); margin-top:-6px;">
@@ -728,10 +865,11 @@ HTML_TEMPLATE = """
     </button>
 </dialog>
 
+<!-- Modal: Espelho da NFS-e -->
 <dialog id="modal-recibo">
     <h3 style="margin-top:0;">Espelho da NFS-e Autorizada</h3>
-    <p><strong>Prestador:</strong> CASA PSICO PSICOLOGIA CLÍNICA LTDA (CNPJ 63.897.592/0001-06)</p>
-    <p><strong>Regime Tributário:</strong> Simples Nacional — Anexo III (Alíquota 6,00% inicial)</p>
+    <p><strong>Prestador:</strong> {{ cfg.razao_social }} (CNPJ {{ cfg.cnpj }})</p>
+    <p><strong>Regime Tributário:</strong> {{ cfg.regime_tributario }}</p>
     <hr>
     <p id="recibo-detalhes" style="line-height:1.6;"></p>
     <a id="modal-btn-pdf" href="#" target="_blank" class="btn-submit">Gerar PDF Oficial (DANFSe Nacional)</a>
@@ -739,7 +877,7 @@ HTML_TEMPLATE = """
 </dialog>
 
 <script>
-    const ALIQUOTA_DAS = 0.06;
+    const ALIQUOTA_DAS = {{ cfg.aliquota_das / 100.0 }};
 
     function apenasDigitos(str) {
         let out = "";
@@ -895,14 +1033,14 @@ HTML_TEMPLATE = """
         document.getElementById("btn-font").setAttribute("aria-pressed", active);
     }
 
-    function abrirRecibo(num, pac, cpf, serv, val, das, data) {
+    function abrirRecibo(num, pac, cpf, serv, val, das, aliq, data) {
         document.getElementById("recibo-detalhes").innerHTML =
             `<strong>Número NFS-e:</strong> #${num}<br>` +
             `<strong>Data/Hora Autorização:</strong> ${data}<br>` +
             `<strong>Tomador:</strong> ${pac} (CPF: ${cpf})<br>` +
             `<strong>Serviço:</strong> ${serv}<br>` +
             `<strong>Valor Bruto da Sessão:</strong> R$ ${val}<br>` +
-            `<strong>Valor do DAS Previsto (6,00%):</strong> R$ ${das}<br>` +
+            `<strong>Valor do DAS Previsto (${aliq}%):</strong> R$ ${das}<br>` +
             `<strong>Situação:</strong> AUTORIZADA`;
         document.getElementById("modal-btn-pdf").href = `/nota/${num}/pdf`;
         document.getElementById("modal-recibo").showModal();
@@ -915,6 +1053,7 @@ HTML_TEMPLATE = """
 
 @app.route("/", methods=["GET"])
 def index():
+    cfg = get_config_fiscal()
     with get_db() as conn:
         rows = conn.execute("SELECT * FROM notas_fiscais ORDER BY id DESC").fetchall()
         pac_rows = conn.execute("""
@@ -929,6 +1068,7 @@ def index():
         item = dict(r)
         item["valor_fmt"] = fmt_brl(item["valor"])
         item["valor_das_fmt"] = fmt_brl(item["valor_das"])
+        item["aliquota_fmt"] = fmt_brl(item["aliquota_das"])
         notas.append(item)
 
     pacientes = []
@@ -939,21 +1079,69 @@ def index():
 
     total_faturado = sum(n["valor"] for n in notas)
     total_das = sum(n["valor_das"] for n in notas)
-    emitida = request.args.get("emitida")
-    erro = request.args.get("erro")
+    das_padrao = round(180.00 * (cfg["aliquota_das"] / 100.0), 2)
+
     return render_template_string(
         HTML_TEMPLATE,
+        cfg=cfg,
+        aliquota_fmt=fmt_brl(cfg["aliquota_das"]),
+        das_padrao_fmt=fmt_brl(das_padrao),
         notas=notas,
         pacientes=pacientes,
         total_faturado_fmt=fmt_brl(total_faturado),
         total_das_fmt=fmt_brl(total_das),
-        emitida=emitida,
-        erro=erro,
+        emitida=request.args.get("emitida"),
+        config_salva=request.args.get("config_salva"),
+        erro=request.args.get("erro"),
     )
+
+
+@app.route("/configurar-fiscal", methods=["POST"])
+def configurar_fiscal():
+    razao_social = request.form.get("razao_social", "").strip()
+    cnpj = request.form.get("cnpj", "").strip()
+    inscricao_municipal = request.form.get("inscricao_municipal", "").strip()
+    municipio_uf = request.form.get("municipio_uf", "").strip()
+    regime_tributario = request.form.get("regime_tributario", "").strip()
+    aliquota_das = parse_valor_brl(request.form.get("aliquota_das", "6,00"))
+    codigo_servico = request.form.get("codigo_servico", "").strip()
+    contador_responsavel = request.form.get("contador_responsavel", "").strip()
+    crc_contador = request.form.get("crc_contador", "").strip()
+
+    if aliquota_das <= 0 or aliquota_das > 35:
+        return redirect(url_for("index", erro="Falha na parametrização fiscal: informe uma alíquota válida entre 0,01% e 35,00%."))
+
+    agora = datetime.now().strftime("%d/%m/%Y %H:%M")
+    with get_db() as conn:
+        conn.execute(
+            """
+            UPDATE configuracoes_fiscais
+            SET razao_social = ?, cnpj = ?, inscricao_municipal = ?, municipio_uf = ?,
+                regime_tributario = ?, aliquota_das = ?, codigo_servico = ?,
+                contador_responsavel = ?, crc_contador = ?, ultima_atualizacao = ?
+            WHERE id = 1
+            """,
+            (
+                razao_social,
+                cnpj,
+                inscricao_municipal,
+                municipio_uf,
+                regime_tributario,
+                aliquota_das,
+                codigo_servico,
+                contador_responsavel,
+                crc_contador,
+                agora,
+            ),
+        )
+        conn.commit()
+
+    return redirect(url_for("index", config_salva="1"))
 
 
 @app.route("/emitir", methods=["POST"])
 def emitir():
+    cfg = get_config_fiscal()
     paciente = request.form.get("paciente", "").strip()
     cpf = request.form.get("cpf", "").strip()
     servico = request.form.get("servico", "").strip()
@@ -965,7 +1153,8 @@ def emitir():
     if valor <= 0 or valor > 999999.99:
         return redirect(url_for("index", erro="Falha na emissão: informe um valor monetário válido maior que R$ 0,00."))
 
-    valor_das = round(valor * (ALIQUOTA_DAS_ANEXO_III / 100.0), 2)
+    aliquota_atual = cfg["aliquota_das"]
+    valor_das = round(valor * (aliquota_atual / 100.0), 2)
     data_emissao = datetime.now().strftime("%d/%m/%Y %H:%M")
 
     with get_db() as conn:
@@ -983,9 +1172,9 @@ def emitir():
                 cpf,
                 servico,
                 valor,
-                ALIQUOTA_DAS_ANEXO_III,
+                aliquota_atual,
                 valor_das,
-                "Simples Nacional - Anexo III (Alíquota 6,00% inicial)",
+                f"{cfg['regime_tributario']} (Alíquota {fmt_brl(aliquota_atual)}%)",
                 "AUTORIZADA",
                 data_emissao,
             ),
@@ -997,6 +1186,7 @@ def emitir():
 
 @app.route("/nota/<numero>/pdf", methods=["GET"])
 def baixar_pdf_nota(numero):
+    cfg = get_config_fiscal()
     with get_db() as conn:
         row = conn.execute("SELECT * FROM notas_fiscais WHERE numero = ?", (numero,)).fetchone()
     if not row:
@@ -1005,19 +1195,23 @@ def baixar_pdf_nota(numero):
     nota = dict(row)
     nota["valor_fmt"] = fmt_brl(nota["valor"])
     nota["valor_das_fmt"] = fmt_brl(nota["valor_das"])
+    nota["aliquota_fmt"] = fmt_brl(nota["aliquota_das"])
     chave_acesso = f"43149022263897592000106000000000{nota['numero']}2611139874"
-    return render_template_string(DANFSE_NACIONAL_TEMPLATE, nota=nota, chave_acesso=chave_acesso)
+    return render_template_string(DANFSE_NACIONAL_TEMPLATE, nota=nota, cfg=cfg, chave_acesso=chave_acesso)
 
 
 @app.route("/health", methods=["GET"])
 def health():
+    cfg = get_config_fiscal()
     with get_db() as conn:
         total_notas = conn.execute("SELECT COUNT(*) FROM notas_fiscais").fetchone()[0]
     return jsonify({
         "status": "UP",
         "service": "RapidoNF-MVP",
-        "client": "Casa Psico",
-        "regime": "Simples Nacional - Anexo III (Aliquota 6,00% inicial)",
+        "client": cfg["razao_social"],
+        "regime": cfg["regime_tributario"],
+        "aliquota_das": cfg["aliquota_das"],
+        "contador_responsavel": cfg["contador_responsavel"],
         "database": "SQLite Connected",
         "notas_registradas": total_notas,
     }), 200
