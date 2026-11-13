@@ -184,5 +184,11 @@ def emitir():
     })
     return redirect(url_for("index"))
 
+@app.route("/health", methods=["GET"])
+def health():
+    return {"status": "UP", "service": "RapidoNF-MVP", "client": "Casa Psico"}, 200
+
 if __name__ == "__main__":
-    app.run(debug=True, port=5050)
+    import os
+    port = int(os.environ.get("PORT", 5050))
+    app.run(host="0.0.0.0", port=port)
