@@ -55,35 +55,90 @@ def init_db():
         conn.execute("""
             CREATE TABLE IF NOT EXISTS configuracoes_fiscais (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
+                ambiente_nacional TEXT NOT NULL,
+                serie_dps TEXT NOT NULL,
                 razao_social TEXT NOT NULL,
                 cnpj TEXT NOT NULL,
                 inscricao_municipal TEXT NOT NULL,
+                cnae_principal TEXT NOT NULL,
+                endereco_prestador TEXT NOT NULL,
                 municipio_uf TEXT NOT NULL,
+                codigo_ibge TEXT NOT NULL,
+                telefone_prestador TEXT NOT NULL,
+                email_prestador TEXT NOT NULL,
+                op_simples_nacional TEXT NOT NULL,
+                regime_apuracao_sn TEXT NOT NULL,
+                regime_especial_trib TEXT NOT NULL,
                 regime_tributario TEXT NOT NULL,
+                exigibilidade_issqn TEXT NOT NULL,
+                retencao_issqn_csrf TEXT NOT NULL,
                 aliquota_das REAL NOT NULL,
                 codigo_servico TEXT NOT NULL,
+                codigo_nbs TEXT NOT NULL,
+                regra_ibs_cbs TEXT NOT NULL,
                 contador_responsavel TEXT NOT NULL,
                 crc_contador TEXT NOT NULL,
                 ultima_atualizacao TEXT NOT NULL
             )
         """)
+
+        # Migração segura caso a tabela já exista de uma execução anterior
+        cols_existentes = [r["name"] for r in conn.execute("PRAGMA table_info(configuracoes_fiscais)").fetchall()]
+        novas_colunas = {
+            "ambiente_nacional": "'1 - Produção (ADN Receita Federal)'",
+            "serie_dps": "'00001'",
+            "cnae_principal": "'8650-0/03 - Atividades de psicologia e psicanálise'",
+            "endereco_prestador": "'Av. General Flores da Cunha, 1250 - Sala 302, Centro - CEP 94910-001'",
+            "codigo_ibge": "'4303103'",
+            "telefone_prestador": "'(51) 99627-1436'",
+            "email_prestador": "'contato@casapsico.com.br'",
+            "op_simples_nacional": "'3 - Optante - Microempresa ou Empresa de Pequeno Porte (ME/EPP)'",
+            "regime_apuracao_sn": "'1 - Regime de apuração dos tributos federais e municipal pelo SN (DAS)'",
+            "regime_especial_trib": "'0 - Nenhum'",
+            "exigibilidade_issqn": "'1 - Exigível (Recolhimento via DAS)'",
+            "retencao_issqn_csrf": "'1 - Não Retido (Dispensa Simples Nacional)'",
+            "codigo_nbs": "'1.2301.21.00 - Serviços de psicologia'",
+            "regra_ibs_cbs": "'Transição 2026 (NT 004/009 - Grupo IBS/CBS facultativo no ADN)'",
+        }
+        for col, default_val in novas_colunas.items():
+            if col not in cols_existentes:
+                conn.execute(f"ALTER TABLE configuracoes_fiscais ADD COLUMN {col} TEXT NOT NULL DEFAULT {default_val}")
+
         cfg_exists = conn.execute("SELECT COUNT(*) FROM configuracoes_fiscais WHERE id = 1").fetchone()[0]
         if cfg_exists == 0:
             conn.execute(
                 """
                 INSERT INTO configuracoes_fiscais
-                (id, razao_social, cnpj, inscricao_municipal, municipio_uf, regime_tributario,
-                 aliquota_das, codigo_servico, contador_responsavel, crc_contador, ultima_atualizacao)
-                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, ambiente_nacional, serie_dps, razao_social, cnpj, inscricao_municipal,
+                 cnae_principal, endereco_prestador, municipio_uf, codigo_ibge,
+                 telefone_prestador, email_prestador, op_simples_nacional, regime_apuracao_sn,
+                 regime_especial_trib, regime_tributario, exigibilidade_issqn, retencao_issqn_csrf,
+                 aliquota_das, codigo_servico, codigo_nbs, regra_ibs_cbs,
+                 contador_responsavel, crc_contador, ultima_atualizacao)
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    "1 - Produção (ADN Receita Federal)",
+                    "00001",
                     "CASA PSICO PSICOLOGIA CLÍNICA LTDA",
                     "63.897.592/0001-06",
                     "ISENTO / SIMPLES NACIONAL",
+                    "8650-0/03 - Atividades de psicologia e psicanálise",
+                    "Av. General Flores da Cunha, 1250 - Sala 302, Centro - CEP 94910-001",
                     "Cachoeirinha - RS",
+                    "4303103",
+                    "(51) 99627-1436",
+                    "contato@casapsico.com.br",
+                    "3 - Optante - Microempresa ou Empresa de Pequeno Porte (ME/EPP)",
+                    "1 - Regime de apuração dos tributos federais e municipal pelo SN (DAS)",
+                    "0 - Nenhum",
                     "Simples Nacional — Anexo III (Fator R >= 28%)",
+                    "1 - Exigível (Recolhimento via DAS)",
+                    "1 - Não Retido (Dispensa Simples Nacional)",
                     6.00,
                     "04.16.01 — Psicologia e Psicanálise (LC 116/03)",
+                    "1.2301.21.00 - Serviços de psicologia",
+                    "Transição 2026 (NT 004/009 - Grupo IBS/CBS facultativo no ADN)",
                     "Lucas Felipe Apollo Poletti (LUYON Assessoria Contábil)",
                     "CRC/RS Ativo",
                     datetime.now().strftime("%d/%m/%Y %H:%M"),
@@ -126,7 +181,7 @@ def init_db():
                     180.00,
                     6.00,
                     10.80,
-                    "Simples Nacional — Anexo III (Alíquota 6,00%)",
+                    "Simples Nacional — Anexo III (Fator R >= 28%)",
                     "AUTORIZADA",
                     "13/11/2026 09:10",
                 ),
@@ -138,7 +193,7 @@ def init_db():
                     250.00,
                     6.00,
                     15.00,
-                    "Simples Nacional — Anexo III (Alíquota 6,00%)",
+                    "Simples Nacional — Anexo III (Fator R >= 28%)",
                     "AUTORIZADA",
                     "13/11/2026 09:22",
                 ),
@@ -170,7 +225,7 @@ DANFSE_NACIONAL_TEMPLATE = """
             color: #0f172a;
             margin: 0;
             padding: 20px;
-            font-size: 11px;
+            font-size: 10.5px;
         }
         .toolbar {
             max-width: 820px;
@@ -203,7 +258,7 @@ DANFSE_NACIONAL_TEMPLATE = """
         }
         .header-grid {
             display: grid;
-            grid-template-columns: 110px 1fr 195px;
+            grid-template-columns: 115px 1fr 205px;
             border: 1px solid #000000;
         }
         .header-logo {
@@ -232,26 +287,26 @@ DANFSE_NACIONAL_TEMPLATE = """
         }
         .header-title h1 {
             margin: 0;
-            font-size: 14px;
+            font-size: 13.5px;
             text-transform: uppercase;
         }
         .header-title p {
-            margin: 4px 0 0 0;
-            font-size: 10px;
+            margin: 3px 0 0 0;
+            font-size: 9.5px;
             color: #334155;
         }
         .header-num {
             padding: 6px 8px;
-            font-size: 10px;
+            font-size: 9.5px;
         }
-        .header-num div { margin-bottom: 4px; }
+        .header-num div { margin-bottom: 3px; }
         .section-bar {
             background: #e2e8f0;
             border: 1px solid #000000;
             border-top: none;
             font-weight: bold;
             padding: 4px 8px;
-            font-size: 10px;
+            font-size: 9.5px;
             text-transform: uppercase;
         }
         .box {
@@ -262,17 +317,17 @@ DANFSE_NACIONAL_TEMPLATE = """
         .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .row-3 { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; }
         .row-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-        .lbl { font-size: 9px; color: #475569; text-transform: uppercase; display: block; }
-        .val { font-size: 11px; font-weight: bold; color: #000000; margin-top: 2px; display: block; }
+        .lbl { font-size: 8.5px; color: #475569; text-transform: uppercase; display: block; }
+        .val { font-size: 10.5px; font-weight: bold; color: #000000; margin-top: 2px; display: block; }
         .chave {
             font-family: "Courier New", monospace;
-            font-size: 11px;
+            font-size: 10.5px;
             font-weight: bold;
-            letter-spacing: 0.6px;
+            letter-spacing: 0.5px;
         }
         .desc-box {
-            min-height: 74px;
-            line-height: 1.5;
+            min-height: 68px;
+            line-height: 1.45;
         }
         .footer-grid {
             display: grid;
@@ -283,8 +338,8 @@ DANFSE_NACIONAL_TEMPLATE = """
         .footer-info {
             padding: 8px;
             border-right: 1px solid #000000;
-            font-size: 9.5px;
-            line-height: 1.45;
+            font-size: 9px;
+            line-height: 1.42;
         }
         .qr-box {
             display: flex;
@@ -315,16 +370,16 @@ DANFSE_NACIONAL_TEMPLATE = """
         <div class="header-grid">
             <div class="header-logo">
                 <span class="badge-nfse">NFS-e</span>
-                <span style="font-size:8.5px; font-weight:bold; margin-top:2px;">PADRÃO NACIONAL</span>
-                <span style="font-size:8px; color:#475569;">Ambiente Nacional</span>
+                <span style="font-size:8px; font-weight:bold; margin-top:2px;">PADRÃO NACIONAL</span>
+                <span style="font-size:7.5px; color:#475569;">{{ cfg.ambiente_nacional[:12] }}</span>
             </div>
             <div class="header-title">
                 <h1>DANFSe — Documento Auxiliar da NFS-e</h1>
-                <p>Nota Fiscal de Serviço Eletrônica — Sistema Nacional NFS-e (LC 116/2003)</p>
+                <p>Nota Fiscal de Serviço Eletrônica — Ambiente de Dados Nacional (ADN / Receita Federal)</p>
                 <p style="font-weight:bold; color:#065f46;">Emissor Integrado: RápidoNF | Tecnologia Luyon Automações®</p>
             </div>
             <div class="header-num">
-                <div><span class="lbl">Número da NFS-e</span><span class="val" style="font-size:13px;">{{ nota.numero }}</span></div>
+                <div><span class="lbl">Número da NFS-e / Série DPS</span><span class="val" style="font-size:12px;">{{ nota.numero }} / Série {{ cfg.serie_dps }}</span></div>
                 <div><span class="lbl">Competência</span><span class="val">{{ nota.data_emissao[:10] }}</span></div>
                 <div><span class="lbl">Data e Hora da Emissão</span><span class="val">{{ nota.data_emissao }}</span></div>
             </div>
@@ -343,7 +398,7 @@ DANFSE_NACIONAL_TEMPLATE = """
                     <span class="val">{{ cfg.razao_social }}</span>
                 </div>
                 <div>
-                    <span class="lbl">CNPJ / CPF</span>
+                    <span class="lbl">CNPJ</span>
                     <span class="val">{{ cfg.cnpj }}</span>
                 </div>
                 <div>
@@ -351,14 +406,24 @@ DANFSE_NACIONAL_TEMPLATE = """
                     <span class="val">{{ cfg.inscricao_municipal }}</span>
                 </div>
             </div>
-            <div class="row-2" style="margin-top:6px;">
+            <div class="row-2" style="margin-top:5px;">
                 <div>
-                    <span class="lbl">Município / UF</span>
-                    <span class="val">{{ cfg.municipio_uf }}</span>
+                    <span class="lbl">Endereço do Prestador</span>
+                    <span class="val" style="font-weight:normal;">{{ cfg.endereco_prestador }}</span>
                 </div>
                 <div>
-                    <span class="lbl">Regime Especial de Tributação</span>
-                    <span class="val">{{ nota.regime }}</span>
+                    <span class="lbl">Município / UF (Código IBGE) & Contato</span>
+                    <span class="val" style="font-weight:normal;">{{ cfg.municipio_uf }} (IBGE: {{ cfg.codigo_ibge }}) | {{ cfg.telefone_prestador }} | {{ cfg.email_prestador }}</span>
+                </div>
+            </div>
+            <div class="row-2" style="margin-top:5px; border-top:1px dashed #cbd5e1; padding-top:5px;">
+                <div>
+                    <span class="lbl">Opção Simples Nacional (opSimpNac)</span>
+                    <span class="val">{{ cfg.op_simples_nacional }}</span>
+                </div>
+                <div>
+                    <span class="lbl">Regime de Apuração & Enquadramento</span>
+                    <span class="val">{{ cfg.regime_tributario }}</span>
                 </div>
             </div>
         </div>
@@ -377,33 +442,33 @@ DANFSE_NACIONAL_TEMPLATE = """
             </div>
         </div>
 
-        <div class="section-bar">Serviço Prestado</div>
+        <div class="section-bar">Serviço Prestado & Classificação Nacional (LC 116/03 / NBS / CNAE)</div>
         <div class="box">
-            <div class="row-3" style="margin-bottom:6px;">
+            <div class="row-3" style="margin-bottom:5px;">
                 <div>
-                    <span class="lbl">Código de Tributação Nacional (LC 116/03)</span>
+                    <span class="lbl">Código Tributação Nacional (cTribNac)</span>
                     <span class="val">{{ cfg.codigo_servico }}</span>
                 </div>
                 <div>
-                    <span class="lbl">Local da Prestação</span>
-                    <span class="val">{{ cfg.municipio_uf }}</span>
+                    <span class="lbl">Código NBS / CNAE Principal</span>
+                    <span class="val">{{ cfg.codigo_nbs }} | {{ cfg.cnae_principal[:9] }}</span>
                 </div>
                 <div>
-                    <span class="lbl">Situação do Documento</span>
-                    <span class="val" style="color:#065f46;">{{ nota.status }}</span>
+                    <span class="lbl">Local da Prestação / Situação</span>
+                    <span class="val" style="color:#065f46;">{{ cfg.municipio_uf }} — {{ nota.status }}</span>
                 </div>
             </div>
-            <div class="desc-box" style="border-top:1px dashed #cbd5e1; padding-top:6px;">
-                <span class="lbl">Descrição do Serviço</span>
-                <span class="val" style="font-weight:normal; margin-top:4px;">
+            <div class="desc-box" style="border-top:1px dashed #cbd5e1; padding-top:5px;">
+                <span class="lbl">Descrição Detalhada do Serviço</span>
+                <span class="val" style="font-weight:normal; margin-top:3px;">
                     {{ nota.servico }}<br>
                     Atendimento clínico realizado conforme prontuário reservado sob sigilo profissional (Resolução CFP nº 010/2005).<br>
-                    Parâmetros fiscais homologados por: {{ cfg.contador_responsavel }}.
+                    Parametrização fiscal homologada por: {{ cfg.contador_responsavel }} ({{ cfg.crc_contador }}).
                 </span>
             </div>
         </div>
 
-        <div class="section-bar">Tributação Municipal & Apuração Simples Nacional (DAS)</div>
+        <div class="section-bar">Tributação Municipal, Apuração Simples Nacional (DAS) & Reforma Tributária</div>
         <div class="box">
             <div class="row-4">
                 <div>
@@ -415,7 +480,7 @@ DANFSE_NACIONAL_TEMPLATE = """
                     <span class="val">R$ {{ nota.valor_fmt }}</span>
                 </div>
                 <div>
-                    <span class="lbl">Alíquota Aplicada</span>
+                    <span class="lbl">Alíquota Simples Nacional</span>
                     <span class="val">{{ nota.aliquota_fmt }}%</span>
                 </div>
                 <div>
@@ -423,18 +488,18 @@ DANFSE_NACIONAL_TEMPLATE = """
                     <span class="val">R$ {{ nota.valor_das_fmt }}</span>
                 </div>
             </div>
-            <div class="row-4" style="margin-top:6px; border-top:1px dashed #cbd5e1; padding-top:6px;">
+            <div class="row-4" style="margin-top:5px; border-top:1px dashed #cbd5e1; padding-top:5px;">
                 <div>
-                    <span class="lbl">Deduções / Descontos</span>
-                    <span class="val">R$ 0,00</span>
+                    <span class="lbl">Exigibilidade ISSQN</span>
+                    <span class="val">{{ cfg.exigibilidade_issqn }}</span>
                 </div>
                 <div>
-                    <span class="lbl">Retenção ISSQN</span>
-                    <span class="val">Não Retido (Recolhimento via DAS)</span>
+                    <span class="lbl">Retenção ISSQN / CSRF (NT 007)</span>
+                    <span class="val">{{ cfg.retencao_issqn_csrf }}</span>
                 </div>
                 <div>
-                    <span class="lbl">Tributos Federais Retidos</span>
-                    <span class="val">R$ 0,00</span>
+                    <span class="lbl">Grupo IBS/CBS (NT 004/009)</span>
+                    <span class="val">{{ cfg.regra_ibs_cbs[:34] }}</span>
                 </div>
                 <div>
                     <span class="lbl">Valor Líquido da NFS-e</span>
@@ -446,12 +511,12 @@ DANFSE_NACIONAL_TEMPLATE = """
         <div class="footer-grid">
             <div class="footer-info">
                 <strong>INFORMAÇÕES COMPLEMENTARES E AUTENTICIDADE</strong><br>
-                1. Documento emitido em conformidade com o layout do Padrão Nacional da NFS-e.<br>
-                2. Não gera direito a crédito de IPI/ICMS. Recolhimento unificado via guia DAS ({{ nota.regime }}).<br>
-                3. Código Verificador: <strong>RNF-{{ nota.numero }}-CASAPSICO-SNIII</strong> | Responsável Contábil: <strong>{{ cfg.contador_responsavel }}</strong>.
+                1. Documento emitido em conformidade com o Guia do Emissor Público Nacional NFS-e (v1.3) e NT 004/007/009.<br>
+                2. {{ cfg.regime_apuracao_sn }}. Não gera direito a crédito de IPI/ICMS.<br>
+                3. Código Verificador: <strong>RNF-{{ nota.numero }}-CASAPSICO-SNIII</strong> | Contador: <strong>{{ cfg.contador_responsavel }}</strong>.
             </div>
             <div class="qr-box">
-                <svg width="68" height="68" viewBox="0 0 25 25" shape-rendering="crispEdges">
+                <svg width="64" height="64" viewBox="0 0 25 25" shape-rendering="crispEdges">
                     <rect width="25" height="25" fill="#fff"/>
                     <path d="M1,1h7v7h-7zM2,2v5h5v-5zM3,3h3v3h-3zM17,1h7v7h-7zM18,2v5h5v-5zM19,3h3v3h-3zM1,17h7v7h-7zM2,18v5h5v-5zM3,19h3v3h-3zM10,2h2v2h-2zM13,3h2v3h-2zM10,6h3v2h-3zM2,10h3v2h-3zM7,10h2v4h-2zM11,10h4v2h-4zM17,10h3v2h-3zM21,11h3v3h-3zM10,14h2v3h-2zM14,14h3v2h-3zM18,16h2v4h-2zM10,19h4v2h-4zM15,21h3v3h-3zM21,20h3v4h-3z" fill="#000"/>
                 </svg>
@@ -502,7 +567,7 @@ HTML_TEMPLATE = """
             padding: 20px;
             transition: all 0.2s ease;
         }
-        .container { max-width: 1160px; margin: 0 auto; }
+        .container { max-width: 1180px; margin: 0 auto; }
         header {
             display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;
             background: var(--card-bg); padding: 16px 24px; border-radius: 10px;
@@ -548,10 +613,10 @@ HTML_TEMPLATE = """
             background: var(--card-bg); padding: 20px; border-radius: 10px;
             border: 2px solid var(--border);
         }
-        label { display: block; font-weight: 700; margin-top: 12px; margin-bottom: 4px; }
+        label { display: block; font-weight: 700; margin-top: 10px; margin-bottom: 3px; font-size: 0.9em; }
         input, select {
-            width: 100%; padding: 10px; border-radius: 6px; border: 2px solid var(--border);
-            background: var(--bg-color); color: var(--text-color); font-size: 1em; box-sizing: border-box;
+            width: 100%; padding: 9px 10px; border-radius: 6px; border: 2px solid var(--border);
+            background: var(--bg-color); color: var(--text-color); font-size: 0.95em; box-sizing: border-box;
         }
         .field-error {
             color: #dc2626; font-size: 0.82em; font-weight: 700; margin-top: 4px; display: none;
@@ -599,15 +664,20 @@ HTML_TEMPLATE = """
         body.high-contrast .btn-pdf { background: #ffff00; color: #000000; border-color: #ffff00; }
         dialog {
             background: var(--card-bg); color: var(--text-color); border: 2px solid var(--border);
-            border-radius: 10px; padding: 24px; max-width: 720px; width: 92%;
+            border-radius: 10px; padding: 22px; max-width: 840px; width: 94%; max-height: 90vh; overflow-y: auto;
         }
         dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
+        .section-divider {
+            margin-top: 16px; padding-bottom: 4px; border-bottom: 2px solid var(--border);
+            font-weight: 800; font-size: 0.88em; text-transform: uppercase; color: var(--primary);
+        }
         .modal-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        @media (max-width: 640px) {
-            .modal-grid-2 { grid-template-columns: 1fr; }
+        .modal-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+        @media (max-width: 700px) {
+            .modal-grid-2, .modal-grid-3 { grid-template-columns: 1fr; }
         }
         .fiscal-meta {
-            margin-top: 12px; padding: 10px; border-radius: 6px;
+            margin-top: 14px; padding: 10px; border-radius: 6px;
             background: var(--bg-color); border: 1px solid var(--border); font-size: 0.82em;
         }
     </style>
@@ -648,7 +718,7 @@ HTML_TEMPLATE = """
 
     {% if config_salva %}
     <div class="alert-success" role="status">
-        <span>Parâmetros fiscais atualizados no banco de dados SQLite por {{ cfg.contador_responsavel }}!</span>
+        <span>Parâmetros fiscais do Padrão Nacional NFS-e atualizados no banco SQLite por {{ cfg.contador_responsavel }}!</span>
     </div>
     {% endif %}
 
@@ -748,38 +818,127 @@ HTML_TEMPLATE = """
     </div>
 </div>
 
-<!-- Modal: Configurações Fiscais do Contador (Persistido no SQLite) -->
+<!-- Modal: Parametrização Fiscal Completa (Leiaute DPS / DANFSe Nacional) -->
 <dialog id="modal-fiscal">
-    <h3 style="margin-top:0;">Parametrização Fiscal & Tributária (Área do Contador)</h3>
-    <p style="font-size:0.86em; color:var(--muted-text); margin-top:-6px;">
-        Os parâmetros abaixo são gravados na tabela <code>configuracoes_fiscais</code> do banco SQLite e aplicados automaticamente nas novas emissões e no DANFSe.
+    <h3 style="margin-top:0;">Parametrização Fiscal — Padrão Nacional NFS-e (Área do Contador)</h3>
+    <p style="font-size:0.85em; color:var(--muted-text); margin-top:-6px;">
+        Campos estruturados conforme o <strong>Guia do Emissor Público Nacional NFS-e (v1.3)</strong> e <strong>Notas Técnicas 004/007/009</strong>, gravados na tabela <code>configuracoes_fiscais</code> do SQLite.
     </p>
     <form method="POST" action="/configurar-fiscal">
+
+        <div class="section-divider">1. Identificação da DPS & Ambiente Nacional (ADN)</div>
         <div class="modal-grid-2">
             <div>
-                <label for="cfg-razao">Razão Social do Prestador</label>
+                <label for="cfg-amb">Ambiente de Transmissão (tpAmb)</label>
+                <select id="cfg-amb" name="ambiente_nacional">
+                    <option value="1 - Produção (ADN Receita Federal)" {% if '1 - Produção' in cfg.ambiente_nacional %}selected{% endif %}>
+                        1 - Produção (ADN Receita Federal)
+                    </option>
+                    <option value="2 - Homologação / Produção Restrita" {% if '2 - Homologação' in cfg.ambiente_nacional %}selected{% endif %}>
+                        2 - Homologação / Produção Restrita
+                    </option>
+                </select>
+            </div>
+            <div>
+                <label for="cfg-serie">Série da DPS (serie)</label>
+                <input id="cfg-serie" name="serie_dps" type="text" maxlength="5" value="{{ cfg.serie_dps }}" required>
+            </div>
+        </div>
+
+        <div class="section-divider">2. Dados Cadastrais do Prestador (Emitente)</div>
+        <div class="modal-grid-3">
+            <div>
+                <label for="cfg-razao">Razão Social</label>
                 <input id="cfg-razao" name="razao_social" type="text" value="{{ cfg.razao_social }}" required>
             </div>
             <div>
-                <label for="cfg-cnpj">CNPJ do Prestador</label>
+                <label for="cfg-cnpj">CNPJ</label>
                 <input id="cfg-cnpj" name="cnpj" type="text" value="{{ cfg.cnpj }}" required>
             </div>
-        </div>
-
-        <div class="modal-grid-2">
             <div>
-                <label for="cfg-im">Inscrição Municipal</label>
+                <label for="cfg-im">Inscrição Municipal (IM)</label>
                 <input id="cfg-im" name="inscricao_municipal" type="text" value="{{ cfg.inscricao_municipal }}" required>
             </div>
+        </div>
+
+        <div class="modal-grid-3">
             <div>
-                <label for="cfg-mun">Município / UF de Incidência</label>
+                <label for="cfg-end">Endereço Completo (Logradouro / CEP)</label>
+                <input id="cfg-end" name="endereco_prestador" type="text" value="{{ cfg.endereco_prestador }}" required>
+            </div>
+            <div>
+                <label for="cfg-mun">Município / UF</label>
                 <input id="cfg-mun" name="municipio_uf" type="text" value="{{ cfg.municipio_uf }}" required>
+            </div>
+            <div>
+                <label for="cfg-ibge">Código IBGE Município</label>
+                <input id="cfg-ibge" name="codigo_ibge" type="text" maxlength="7" value="{{ cfg.codigo_ibge }}" required>
             </div>
         </div>
 
+        <div class="modal-grid-3">
+            <div>
+                <label for="cfg-cnae">CNAE Principal</label>
+                <input id="cfg-cnae" name="cnae_principal" type="text" value="{{ cfg.cnae_principal }}" required>
+            </div>
+            <div>
+                <label for="cfg-tel">Telefone (Impresso DANFSe)</label>
+                <input id="cfg-tel" name="telefone_prestador" type="text" value="{{ cfg.telefone_prestador }}" required>
+            </div>
+            <div>
+                <label for="cfg-mail">E-mail Institucional</label>
+                <input id="cfg-mail" name="email_prestador" type="email" value="{{ cfg.email_prestador }}" required>
+            </div>
+        </div>
+
+        <div class="section-divider">3. Classificação do Serviço & Reforma Tributária (LC 116 / NBS / IBS-CBS)</div>
+        <div class="modal-grid-3">
+            <div>
+                <label for="cfg-cod">Código Tributação Nacional (cTribNac)</label>
+                <input id="cfg-cod" name="codigo_servico" type="text" value="{{ cfg.codigo_servico }}" required>
+            </div>
+            <div>
+                <label for="cfg-nbs">Código NBS (Nomenclatura Bras. Serviços)</label>
+                <input id="cfg-nbs" name="codigo_nbs" type="text" value="{{ cfg.codigo_nbs }}" required>
+            </div>
+            <div>
+                <label for="cfg-ibscbs">Regra IBS / CBS (NT 004/009 - LC 214/25)</label>
+                <input id="cfg-ibscbs" name="regra_ibs_cbs" type="text" value="{{ cfg.regra_ibs_cbs }}" required>
+            </div>
+        </div>
+
+        <div class="section-divider">4. Regimes de Tributação & Apuração Simples Nacional (DAS)</div>
         <div class="modal-grid-2">
             <div>
-                <label for="cfg-regime">Enquadramento Simples Nacional</label>
+                <label for="cfg-opsn">Opção Simples Nacional (opSimpNac)</label>
+                <select id="cfg-opsn" name="op_simples_nacional">
+                    <option value="3 - Optante - Microempresa ou Empresa de Pequeno Porte (ME/EPP)" {% if '3 - Optante' in cfg.op_simples_nacional %}selected{% endif %}>
+                        3 - Optante - Microempresa ou Empresa de Pequeno Porte (ME/EPP)
+                    </option>
+                    <option value="2 - Optante - Microempreendedor Individual (MEI)" {% if '2 - Optante' in cfg.op_simples_nacional %}selected{% endif %}>
+                        2 - Optante - Microempreendedor Individual (MEI)
+                    </option>
+                    <option value="1 - Não Optante" {% if '1 - Não Optante' in cfg.op_simples_nacional %}selected{% endif %}>
+                        1 - Não Optante
+                    </option>
+                </select>
+            </div>
+            <div>
+                <label for="cfg-regap">Regime de Apuração SN (regApTribSN)</label>
+                <select id="cfg-regap" name="regime_apuracao_sn">
+                    <option value="1 - Regime de apuração dos tributos federais e municipal pelo SN (DAS)" {% if '1 - Regime' in cfg.regime_apuracao_sn %}selected{% endif %}>
+                        1 - Regime de apuração dos tributos federais e municipal pelo SN (DAS)
+                    </option>
+                    <option value="2 - Apuração federais pelo SN e ISSQN por fora (Sublimite)" {% if '2 - Apuração' in cfg.regime_apuracao_sn %}selected{% endif %}>
+                        2 - Apuração federais pelo SN e ISSQN por fora (Sublimite)
+                    </option>
+                </select>
+            </div>
+        </div>
+
+        <div class="modal-grid-3">
+            <div>
+                <label for="cfg-regime">Enquadramento / Anexo</label>
                 <select id="cfg-regime" name="regime_tributario">
                     <option value="Simples Nacional — Anexo III (Fator R >= 28%)" {% if 'Anexo III' in cfg.regime_tributario %}selected{% endif %}>
                         Simples Nacional — Anexo III (Fator R &gt;= 28%)
@@ -793,14 +952,44 @@ HTML_TEMPLATE = """
                 </select>
             </div>
             <div>
-                <label for="cfg-aliq">Alíquota Efetiva DAS / Tributo (%)</label>
+                <label for="cfg-aliq">Alíquota Efetiva DAS (%)</label>
                 <input id="cfg-aliq" name="aliquota_das" type="text" inputmode="decimal" value="{{ aliquota_fmt }}" required>
+            </div>
+            <div>
+                <label for="cfg-regesp">Regime Especial (regEspTrib)</label>
+                <select id="cfg-regesp" name="regime_especial_trib">
+                    <option value="0 - Nenhum" {% if '0 - Nenhum' in cfg.regime_especial_trib %}selected{% endif %}>0 - Nenhum</option>
+                    <option value="4 - Sociedade de Profissionais" {% if '4 - Sociedade' in cfg.regime_especial_trib %}selected{% endif %}>4 - Sociedade de Profissionais</option>
+                </select>
             </div>
         </div>
 
-        <label for="cfg-cod">Código de Tributação Nacional (LC 116/03)</label>
-        <input id="cfg-cod" name="codigo_servico" type="text" value="{{ cfg.codigo_servico }}" required>
+        <div class="modal-grid-2">
+            <div>
+                <label for="cfg-exig">Exigibilidade do ISSQN (exigISSQN)</label>
+                <select id="cfg-exig" name="exigibilidade_issqn">
+                    <option value="1 - Exigível (Recolhimento via DAS)" {% if '1 - Exigível' in cfg.exigibilidade_issqn %}selected{% endif %}>
+                        1 - Exigível (Recolhimento via DAS)
+                    </option>
+                    <option value="2 - Exportação de Serviços" {% if '2 - Exportação' in cfg.exigibilidade_issqn %}selected{% endif %}>
+                        2 - Exportação de Serviços
+                    </option>
+                </select>
+            </div>
+            <div>
+                <label for="cfg-ret">Retenção ISSQN / CSRF (NT 007)</label>
+                <select id="cfg-ret" name="retencao_issqn_csrf">
+                    <option value="1 - Não Retido (Dispensa Simples Nacional)" {% if '1 - Não Retido' in cfg.retencao_issqn_csrf %}selected{% endif %}>
+                        1 - Não Retido (Dispensa Simples Nacional)
+                    </option>
+                    <option value="2 - Retido pelo Tomador" {% if '2 - Retido' in cfg.retencao_issqn_csrf %}selected{% endif %}>
+                        2 - Retido pelo Tomador
+                    </option>
+                </select>
+            </div>
+        </div>
 
+        <div class="section-divider">5. Responsabilidade Técnica Contábil</div>
         <div class="modal-grid-2">
             <div>
                 <label for="cfg-cont">Contador / Assessoria Responsável</label>
@@ -817,7 +1006,7 @@ HTML_TEMPLATE = """
             <strong>Responsável Técnico:</strong> {{ cfg.contador_responsavel }} ({{ cfg.crc_contador }})
         </div>
 
-        <button type="submit" class="btn-submit">Salvar Parâmetros Fiscais no Banco</button>
+        <button type="submit" class="btn-submit">Salvar Parâmetros Fiscais no Banco SQLite</button>
         <button type="button" class="btn-recibo" style="width:100%; margin-top:8px; padding:10px;"
             onclick="document.getElementById('modal-fiscal').close()">
             Cancelar / Fechar
@@ -1098,13 +1287,27 @@ def index():
 
 @app.route("/configurar-fiscal", methods=["POST"])
 def configurar_fiscal():
+    ambiente_nacional = request.form.get("ambiente_nacional", "").strip()
+    serie_dps = request.form.get("serie_dps", "").strip()
     razao_social = request.form.get("razao_social", "").strip()
     cnpj = request.form.get("cnpj", "").strip()
     inscricao_municipal = request.form.get("inscricao_municipal", "").strip()
+    cnae_principal = request.form.get("cnae_principal", "").strip()
+    endereco_prestador = request.form.get("endereco_prestador", "").strip()
     municipio_uf = request.form.get("municipio_uf", "").strip()
+    codigo_ibge = request.form.get("codigo_ibge", "").strip()
+    telefone_prestador = request.form.get("telefone_prestador", "").strip()
+    email_prestador = request.form.get("email_prestador", "").strip()
+    op_simples_nacional = request.form.get("op_simples_nacional", "").strip()
+    regime_apuracao_sn = request.form.get("regime_apuracao_sn", "").strip()
+    regime_especial_trib = request.form.get("regime_especial_trib", "").strip()
     regime_tributario = request.form.get("regime_tributario", "").strip()
+    exigibilidade_issqn = request.form.get("exigibilidade_issqn", "").strip()
+    retencao_issqn_csrf = request.form.get("retencao_issqn_csrf", "").strip()
     aliquota_das = parse_valor_brl(request.form.get("aliquota_das", "6,00"))
     codigo_servico = request.form.get("codigo_servico", "").strip()
+    codigo_nbs = request.form.get("codigo_nbs", "").strip()
+    regra_ibs_cbs = request.form.get("regra_ibs_cbs", "").strip()
     contador_responsavel = request.form.get("contador_responsavel", "").strip()
     crc_contador = request.form.get("crc_contador", "").strip()
 
@@ -1116,19 +1319,37 @@ def configurar_fiscal():
         conn.execute(
             """
             UPDATE configuracoes_fiscais
-            SET razao_social = ?, cnpj = ?, inscricao_municipal = ?, municipio_uf = ?,
-                regime_tributario = ?, aliquota_das = ?, codigo_servico = ?,
+            SET ambiente_nacional = ?, serie_dps = ?, razao_social = ?, cnpj = ?,
+                inscricao_municipal = ?, cnae_principal = ?, endereco_prestador = ?,
+                municipio_uf = ?, codigo_ibge = ?, telefone_prestador = ?, email_prestador = ?,
+                op_simples_nacional = ?, regime_apuracao_sn = ?, regime_especial_trib = ?,
+                regime_tributario = ?, exigibilidade_issqn = ?, retencao_issqn_csrf = ?,
+                aliquota_das = ?, codigo_servico = ?, codigo_nbs = ?, regra_ibs_cbs = ?,
                 contador_responsavel = ?, crc_contador = ?, ultima_atualizacao = ?
             WHERE id = 1
             """,
             (
+                ambiente_nacional,
+                serie_dps,
                 razao_social,
                 cnpj,
                 inscricao_municipal,
+                cnae_principal,
+                endereco_prestador,
                 municipio_uf,
+                codigo_ibge,
+                telefone_prestador,
+                email_prestador,
+                op_simples_nacional,
+                regime_apuracao_sn,
+                regime_especial_trib,
                 regime_tributario,
+                exigibilidade_issqn,
+                retencao_issqn_csrf,
                 aliquota_das,
                 codigo_servico,
+                codigo_nbs,
+                regra_ibs_cbs,
                 contador_responsavel,
                 crc_contador,
                 agora,
@@ -1196,7 +1417,7 @@ def baixar_pdf_nota(numero):
     nota["valor_fmt"] = fmt_brl(nota["valor"])
     nota["valor_das_fmt"] = fmt_brl(nota["valor_das"])
     nota["aliquota_fmt"] = fmt_brl(nota["aliquota_das"])
-    chave_acesso = f"43149022263897592000106000000000{nota['numero']}2611139874"
+    chave_acesso = f"{cfg['codigo_ibge']}22{re.sub(r'\\D', '', cfg['cnpj'])}000000000{nota['numero']}2611139874"
     return render_template_string(DANFSE_NACIONAL_TEMPLATE, nota=nota, cfg=cfg, chave_acesso=chave_acesso)
 
 
@@ -1209,8 +1430,10 @@ def health():
         "status": "UP",
         "service": "RapidoNF-MVP",
         "client": cfg["razao_social"],
+        "ambiente_nacional": cfg["ambiente_nacional"],
         "regime": cfg["regime_tributario"],
         "aliquota_das": cfg["aliquota_das"],
+        "codigo_ibge": cfg["codigo_ibge"],
         "contador_responsavel": cfg["contador_responsavel"],
         "database": "SQLite Connected",
         "notas_registradas": total_notas,
